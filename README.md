@@ -8,7 +8,7 @@ Tracev3 files are compressed log files which can't be parsed individually on the
 
 Each has a different format. These files have to be parsed together and pieced together to recreate the log entries. 
 
-This is a work in progress.. 
+_This is a work in progress.._
 
 #### Project Status: alpha, experimental
 #### Requirements: 32 bit Python 2.7

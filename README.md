@@ -11,4 +11,5 @@ Each has a different format. These files have to be parsed together and pieced t
 _This is a work in progress.._
 
 #### Project Status: alpha, experimental
-#### Requirements: 32 bit Python 2.7
+#### Requirements: 32 bit Python 2.7 with modules lz4, biplist and ipaddress
+The modules can easily be installed using `pip install lz4 biplist ipaddress`

@@ -834,7 +834,7 @@ class TraceV3():
             log.error('Log data length (0x{:X}) < {} for log @ 0x{:X}!'.format(log_length, bytes_needed, log_abs_offset))
             raise ValueError('Not enough data in log data buffer!')
 
-    def ProcessDataBlock(self, buffer, meta, meta_block_index, debug_file_pos, log_block_process_func=None):
+    def ProcessDataBlock(self, buffer, meta, meta_block_index, debug_file_pos, log_list_process_func=None):
         '''Read blocks with flag 0x600D'''
         global debug_log_count
         len_buffer = len(buffer)
@@ -1271,8 +1271,8 @@ class TraceV3():
             if (pos % 8) != 0:
                 pos += (8 - (pos % 8))
                 
-        if log_block_process_func:
-            log_block_process_func(logs, self)
+        if log_list_process_func:
+            log_list_process_func(logs, self)
     
     def GetPidNode(self, pid, upid, block_meta):
         pid_node = block_meta.Nodes.get( upid | (pid << 32) , None)
@@ -1280,8 +1280,21 @@ class TraceV3():
             log.error("Could not find node with pid={} upid={}".format(pid, upid))
         return pid_node
 
-    def Parse(self, log_block_process_func=None):
-        '''Parse the traceV3 file, returns True/False'''
+    def Parse(self, log_list_process_func=None):
+        '''Parse the traceV3 file, returns True/False.
+           'log_list_process_func' is a function the caller provides to 
+           process a list of logs. It gets called periodically as logs are extracted.
+           Its syntax is log_list_process_func(logs_list, tracev3_object)
+           Here log_list = [ log_1, log_2, .. ], where each log_x item is another list
+           log_x = [ log_file_pos, continuous_time, time, thread, log_type, 
+                    activity_id, parent_activity_id, 
+                    pid, ttl, p_name, lib, sub_system, category,
+                    signpost_name, signpost_string, 
+                    image_offset, image_UUID, process_image_UUID, 
+                    sender_image_path, process_image_path,
+                    log_msg
+                  ] 
+        '''
         log.debug("-"*100 + "\r\nParsing traceV3 file {}".format(self.file.filename))
         f = self.file.open()
         if not f:
@@ -1315,7 +1328,7 @@ class TraceV3():
                     uncompressed_file_pos = uncompressed_file_pos + 16 + data_length
                 elif flags == 0x600D:
                     uncompressed_buffer = DecompressBlockData(buffer, len(buffer))
-                    self.ProcessDataBlock(uncompressed_buffer, meta, meta_block_index, uncompressed_file_pos + 16, log_block_process_func)
+                    self.ProcessDataBlock(uncompressed_buffer, meta, meta_block_index, uncompressed_file_pos + 16, log_list_process_func)
                     meta_block_index += 1
                     uncompressed_file_pos = uncompressed_file_pos + 16 + len(uncompressed_buffer)
                 else:

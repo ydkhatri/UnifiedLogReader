@@ -894,8 +894,8 @@ class TraceV3():
                         lib = '' # same as senderImage?
                         msg_str_len = 0    # when has_string_desc
                         msg_str_v_offset = 0 # when has_string_desc
-                        sub_sys = '' #'-sub_sys-'
-                        cat = '' #'-cat-'
+                        sub_sys = ''
+                        cat = ''
                         ttl = 0
                         act_id = [0]
                         has_msg_in_uuidtext = False

@@ -1,5 +1,9 @@
 # 
-# First cut at *.tracev3 file parsing
+# This script will produce a decompressed .tracev3 file for analysis.
+# Provide either a file or a folder as argument, it will decompress all .tracev3 
+# files found recursively (if folder is provided). Output will be in same folder
+# as original tracev3 file and will have .dec appended to name.
+# 
 # (c) Yogesh Khatri 2018
 #
 import lz4.block

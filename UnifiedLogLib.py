@@ -851,9 +851,9 @@ class TraceV3():
                 offset_strings, strings_v_offset, unknown4, unknown5, continuousTime \
                   = struct.unpack('<HHHHQ', buffer[pos + pos2 : pos + pos2 + 16])
                 pos2 = 32
-                if data_size - offset_strings > 0x10: # Has strings
-                    local_strings = buffer[pos + 16 + offset_strings: pos + data_size]
-                    # TODO - Sometimes there are a few null bytes before the start of string data, this does not look like padding!
+                if strings_v_offset < 4096: #data_size - offset_strings > 0x10: # Has strings
+                    size_priv_data = 4096 - strings_v_offset
+                    local_strings = buffer[pos + data_size - size_priv_data : pos + data_size]
                 else:
                     local_strings = ''
 

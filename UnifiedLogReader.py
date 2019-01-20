@@ -100,10 +100,7 @@ def ProcessLogsList_DefaultFormat(logs, tracev3):
             if len(li[12]) or len (li[13]):
                 msg += '[' + li[12] + ':' + li[13] + '] '
             msg += li[21]
-                
-            #f.write('{time:26} {li[4]:10#x} {li[5]:11} {li[6]:20#x} {li[8]:6} {li[7]:4} {message}'\
-            #        '\r\n'.format(li=li, time=str(UnifiedLogLib.ReadAPFSTime(li[3])), message=msg))
-            f.write('{time:26} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} {li[8]:<6} {li[9]:<4} {message}\r\n'.format(li=li, time=str(UnifiedLogLib.ReadAPFSTime(li[3])), message=msg))
+            f.write(u'{time:26} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} {li[8]:<6} {li[9]:<4} '.format(li=li, time=str(UnifiedLogLib.ReadAPFSTime(li[3])), message=msg))            
         except:
             log.exception('Error writing to output file')
 
@@ -118,7 +115,7 @@ def RecurseProcessLogFiles(input_path, ts_list, uuidtext_folder_path, caches, pr
             log.debug("Found file - " + input_file_path)
             UnifiedLogLib.TraceV3(vfs, UnifiedLogLib.VirtualFile(input_file_path, 'traceV3'), ts_list, uuidtext_folder_path, caches).Parse(proc_func)
         elif os.path.isdir(input_file_path):
-            RecurseProcessLogFiles(input_file_path, ts_list, uuidtext_folder_path, caches)
+            RecurseProcessLogFiles(input_file_path, ts_list, uuidtext_folder_path, caches, proc_func)
 
 def main():
     global f

@@ -6,6 +6,8 @@
 # 
 # (c) Yogesh Khatri 2018
 #
+# Tested on Sierra, High Sierra and Mojave
+#
 import lz4.block
 import os
 import sys
@@ -16,9 +18,7 @@ def DecompressFile(input_path, output_path):
     try:
         with open(input_path, 'rb') as trace_file:
             with open(output_path, 'wb') as out_file:
-                index = 1
-                out_file.write(trace_file.read(0xE0)) # write header to output
-                trace_file.seek(0xE0)
+                index = 0
                 header = trace_file.read(4)
                 while header:
                     begin_pos = trace_file.tell() - 4
@@ -28,7 +28,9 @@ def DecompressFile(input_path, output_path):
 
                     trace_file.seek(begin_pos)
                     block_data = trace_file.read(16 + struct_len)
-                    if header[0] == b'\x0B':
+                    if header == b'\x00\x10\x00\x00': # header
+                        out_file.write(block_data) # boot_uuid header, write to output directly
+                    elif header[0] == b'\x0B':
                         out_file.write(block_data) # uncompressed, write to output directly
                     elif header[0] == b'\x0D': 
                         if block_data[16:20] in [b'bv41', b'bv4-']:
@@ -57,7 +59,7 @@ def DecompressFile(input_path, output_path):
                         else:
                             print 'Unknown compression type', binascii.hexlify(block_data[16:20])
                     else:
-                        print 'Unknown header value encountered : 0x{:8X}'.format(header)
+                        print 'Unknown header value encountered : {}, struct_len=0x{:X}'.format(binascii.hexlify(header), struct_len)
                         out_file.write(block_data[0:8]) # Same Header !
                         out_file.write(block_data)
                     if struct_len % 8: # Go to QWORD boundary
@@ -79,10 +81,12 @@ def RecurseDecompressFiles(input_path):
             DecompressFile(input_file_path, input_file_path + ".dec")
         elif os.path.isdir(input_file_path):
             RecurseDecompressFiles(input_file_path)
-
-input_path = sys.argv[1]
-
-if os.path.isdir(input_path):
-    RecurseDecompressFiles(input_path)
+if len(sys.argv) == 1:
+    print "Not enough arguments, provide the traceV3 file's path or a folder path to recurse extract tracev3 files"
 else:
-    DecompressFile(input_path, input_path + ".dec")
+    input_path = sys.argv[1]
+
+    if os.path.isdir(input_path):
+        RecurseDecompressFiles(input_path)
+    else:
+        DecompressFile(input_path, input_path + ".dec")

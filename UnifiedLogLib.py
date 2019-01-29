@@ -39,7 +39,7 @@ from uuid import UUID
 import binascii
 import biplist
 import datetime
-import ipaddress # pip install ipaddress
+import ipaddress
 import logging
 import lz4.block
 import os
@@ -709,7 +709,7 @@ class TraceV3():
                         else: log.error('Unknown length ({}) for float/double '.format(data_size))
                         msg += ('%'+ flags_width_precision + specifier) % number
                 elif specifier in ('c', 'C', 's', 'S', '@'):  # c is Single char but stored as 4 bytes
-                    # %C & %S are unicode char, but everything in log file would be converted to utf8, so should be the same
+                    # %C & %S are unicode char, but everything in log file would be encoded as utf8, so should be the same
                     # %@ is a utf8 representation of object
                     chars = ''
                     if data_size == 0:
@@ -848,7 +848,7 @@ class TraceV3():
             tag, subtag, data_size = self.ParseChunkHeader(buffer[pos:pos+16], debug_file_pos + pos)
             pos += 16
             start_skew = pos % 8 # calculate deviation from 8-byte boundary for padding later
-            pid, upid, ttl = struct.unpack('QII', buffer[pos:pos+16]) # ttl is not for type 0601, it means something else there!
+            pid, upid, ttl = struct.unpack('QII', buffer[pos:pos+16]) # ttl is not for type 6001, it means something else there!
             pos2 = 16
             proc_info = self.GetProcInfo(pid, upid, chunk_meta)
             log_file_pos = debug_file_pos + pos + pos2 - 32
@@ -951,7 +951,7 @@ class TraceV3():
 
                         if u2 & 0x00E0: # E=1110
                             log.info('Unknown flag for u2 encountered u2=0x{:4X} @ 0x{:X} ct={}'.format(u2, log_file_pos, ct))
-                            raise ValueError('Unk u2 flag')
+                            #raise ValueError('Unk u2 flag')
                         if u2 & 0x0010: has_unique_pid = True
 
                         if u2 & 0x0008: has_alternate_uuid = True
@@ -1228,7 +1228,7 @@ class TraceV3():
                             log_msg = unicode(plist)
                         except:
                             log.exception('Problem reading plist from log @ 0x{:X} ct={}'.format(log_file_pos, ct))
-                    elif data_type == 2:  #custom object, not being read by log utility in most cases!
+                    elif data_type == 2:  #custom object, not being read by log utility in many cases!
                         log.error('Did not read data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
                     elif data_type == 3:  # custom [Apple] #TODO - read non-plist data
                         if obj_type_str_1 == 'location' and obj_type_str_2 == '_CLClientManagerStateTrackerState':
@@ -1240,7 +1240,6 @@ class TraceV3():
                     pos2 += data_len
 
                 try: # for any uncaught exception
-                    #dsc_cache = catalog.FileObjects[proc_info.dsc_file_index] if (proc_info.dsc_file_index != -1) else None
                     ut_cache = catalog.FileObjects[proc_info.uuid_file_index]
                     p_name = ut_cache.library_name
 

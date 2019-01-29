@@ -24,8 +24,14 @@
 #
 # Script Name  : UnifiedLogReader.py
 # Author       : Yogesh Khatri
-# Last Updated : 12/19/2018
+# Last Updated : 2019-01-23
 # Purpose/Usage: This script will read unified logs. Tested on python2.7
+# 
+# Notes: 
+# Currently this is tested on version 17(0x11) of the tracev3 file used in 
+# macOS Sierra (10.12.5) and above (including Mojave 10.14.2). It will not
+# work on Sierra (10.12) as it uses version 14(0xE), a later update will
+# address this.
 #
 
 from __future__ import print_function
@@ -43,6 +49,7 @@ UnifiedLogLib.log = log
 
 f = None
 vfs = UnifiedLogLib.VirtualFileSystem(UnifiedLogLib.VirtualFile)
+total_logs_processed = 0
 
 def DecompressTraceV3Log(input_path, output_path):
     try:
@@ -66,9 +73,10 @@ def ProcessLogsList_All(logs, tracev3):
                   ]
     '''
     global f
+    global total_logs_processed
     for li in logs:
         try:
-            f.write('{}\t0x{:X}\t'\
+            f.write(u'{}\t0x{:X}\t'\
                 '{}\t{}\t0x{:X}\t{}\t'\
                 '0x{:X}\t0x{:X}\t'\
                 '{}\t{}\t{}\t({})\t{}\t{}\t'\
@@ -85,11 +93,13 @@ def ProcessLogsList_All(logs, tracev3):
                 li[16],unicode(li[17]).upper(),unicode(li[18]).upper(),
                 li[19],li[20],
                 li[21]))
+            total_logs_processed += 1
         except:
             log.exception('Error writing to output file')
 
 def ProcessLogsList_DefaultFormat(logs, tracev3):
     global f
+    global total_logs_processed
     for li in logs:
         try:
             signpost = '' #(li[14] + ':') if li[14] else ''
@@ -100,7 +110,8 @@ def ProcessLogsList_DefaultFormat(logs, tracev3):
             if len(li[12]) or len (li[13]):
                 msg += '[' + li[12] + ':' + li[13] + '] '
             msg += li[21]
-            f.write(u'{time:26} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} {li[8]:<6} {li[9]:<4} '.format(li=li, time=str(UnifiedLogLib.ReadAPFSTime(li[3])), message=msg))            
+            f.write(u'{time:26} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} {li[8]:<6} {li[9]:<4} {message}\r\n'.format(li=li, time=str(UnifiedLogLib.ReadAPFSTime(li[3])), message=msg))
+            total_logs_processed += 1
         except:
             log.exception('Error writing to output file')
 
@@ -111,7 +122,7 @@ def RecurseProcessLogFiles(input_path, ts_list, uuidtext_folder_path, caches, pr
     
     for file_name in files:
         input_file_path = os.path.join(input_path, file_name)
-        if file_name.lower().endswith('.tracev3'):
+        if file_name.lower().endswith('.tracev3') and not file_name.startswith('._'):
             log.debug("Found file - " + input_file_path)
             UnifiedLogLib.TraceV3(vfs, UnifiedLogLib.VirtualFile(input_file_path, 'traceV3'), ts_list, uuidtext_folder_path, caches).Parse(proc_func)
         elif os.path.isdir(input_file_path):
@@ -120,8 +131,10 @@ def RecurseProcessLogFiles(input_path, ts_list, uuidtext_folder_path, caches, pr
 def main():
     global f
     global vfs
+    global total_logs_processed
     recurse = False
-    if len(sys.argv) < 3:
+    
+    if len(sys.argv) < 5:
         print('Only {} arguments given'.format(len(sys.argv)))
         print('Usage: tool.py output_path uuid_folder_path timesync_folder_path [-r] traceV3_file_path')
         print('       If using -r, specify a folder instead of a file to recurse and find all .traceV3 files')
@@ -187,6 +200,8 @@ def main():
             log.error("Failed to open file for writing")
             f = None
         if f:
+            time_processing_started = time.time()
+
             #Read uuidtext & dsc files
             caches = UnifiedLogLib.CachedFiles(vfs)
             caches.ParseFolder(uuidtext_folder_path)
@@ -197,6 +212,13 @@ def main():
                 RecurseProcessLogFiles(traceV3_path, ts_list, uuidtext_folder_path, caches, proc_func)
             else:
                 UnifiedLogLib.TraceV3(vfs, UnifiedLogLib.VirtualFile(traceV3_path, 'traceV3'), ts_list, uuidtext_folder_path, caches).Parse(proc_func)
+            f.close()
+            
+            time_processing_ended = time.time()
+            run_time = time_processing_ended - time_processing_started
+            log.info("Finished in time = {}".format(time.strftime('%H:%M:%S', time.gmtime(run_time))))
+            log.info("{} Logs processed".format(total_logs_processed))
+            log.info("Review the Log file and report any ERRORs or EXCEPTIONS to the developers")
     else:
         log.error('Failed to get any timesync entries')
 

@@ -24,7 +24,7 @@ def DecompressFile(input_path, output_path):
                     begin_pos = trace_file.tell() - 4
                     trace_file.seek(begin_pos + 8)
                     struct_len = struct.unpack('<Q', trace_file.read(8))[0]
-                    print "index={} pos=0x{:X}".format(index, begin_pos), binascii.hexlify(header)
+                    #print "index={} pos=0x{:X}".format(index, begin_pos), binascii.hexlify(header)
 
                     trace_file.seek(begin_pos)
                     block_data = trace_file.read(16 + struct_len)
@@ -61,9 +61,11 @@ def DecompressFile(input_path, output_path):
                     else:
                         print 'Unknown header value encountered : {}, struct_len=0x{:X}'.format(binascii.hexlify(header), struct_len)
                         out_file.write(block_data[0:8]) # Same Header !
-                        out_file.write(block_data)
-                    if struct_len % 8: # Go to QWORD boundary
+                        out_file.write(block_data) # Same data!
+                    if struct_len % 8: # Go to QWORD boundary on input
                         struct_len += 8 - (struct_len % 8)
+                    if out_file.tell() % 8: # Go to QWORD boundary on output
+                        out_file.write(b'\x00\x00\x00\x00\x00\x00\x00'[0:(8-out_file.tell() % 8)])
                     trace_file.seek(begin_pos + 16 + struct_len)
                     header = trace_file.read(4)
                     index += 1
@@ -77,7 +79,7 @@ def RecurseDecompressFiles(input_path):
     for file_name in files:
         input_file_path = os.path.join(input_path, file_name)
         if file_name.lower().endswith('.tracev3'):
-            print "Found file - ", input_file_path
+            print "Processing file - ", input_file_path
             DecompressFile(input_file_path, input_file_path + ".dec")
         elif os.path.isdir(input_file_path):
             RecurseDecompressFiles(input_file_path)
@@ -89,4 +91,5 @@ else:
     if os.path.isdir(input_path):
         RecurseDecompressFiles(input_path)
     else:
+        print "Processing file - ", input_path
         DecompressFile(input_path, input_path + ".dec")

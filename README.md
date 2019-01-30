@@ -1,29 +1,24 @@
 # UnifiedLogReader
 A parser for Unified logging .tracev3 files.
 
-Tracev3 files are compressed log files which can't be parsed individually on their own due to dependencies on other files. These dependencies are-
-* TimeSync files - contains boot uuid and continuous time to actual time (walltime) mapping
-* DSC files - contains most common shared string resources
-* Uuidtext files - contains string resources
-
-Each item has a different format. As data is sourced from these files, they have to be parsed along with the .tracev3 files, and the data then pieced together to recreate the log entries. 
-
-_This is a work in progress.. Currently this does not work on the first version of tracev3 which is seen on macOS 10.12.0 (which uses catalog v2). Tested to work on macOS 10.12.5 to current 10.14.3_
-
 ## Project Status
-alpha, experimental
+#### alpha, experimental
+_This is a work in progress.. Currently this does not support the first version of tracev3 which is seen on macOS 10.12.0 (which uses catalog v2). It has been tested to work on catalog v3 files used in macOS 10.12.5 upto the current 10.14.3_
+
 ## License
 MIT
 ## Requirements: 32 bit Python 2.7 with modules lz4, biplist and ipaddress
 The modules can easily be installed using `pip install lz4 biplist ipaddress`
 
 ## Usage
-The script needs access to 3 folders-
+The script needs access to files from 3 folders -
 * /private/var/db/diagnostics
 * /private/var/db/diagnostics/timesync
 * /private/var/db/uuidtext
 
-The tracev3 files are located within the diagnostics folder. If you have an image, you can just extract the diagnostics and uuidtext folders (shown at paths above) and provide it to this script.
+The tracev3 files are located within the diagnostics folder. If you have a disk image, just extract the diagnostics and uuidtext folders (shown at paths above) and provide it to this script.
+
+Currently the script supports TSV and sqlite output. 
 
 ```
 G:\>c:\Python27\python.exe c:\Github\UnifiedLogReader\UnifiedLogReader.py -h

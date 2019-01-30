@@ -7,7 +7,12 @@ _This is a work in progress.. Currently this does not support the first version 
 
 ## License
 MIT
-## Requirements: 32 bit Python 2.7 with modules lz4, biplist and ipaddress
+## Requirements
+32 bit Python 2.7 and the following modules
+* lz4
+* biplist
+* ipaddress
+
 The modules can easily be installed using `pip install lz4 biplist ipaddress`
 
 ## Usage

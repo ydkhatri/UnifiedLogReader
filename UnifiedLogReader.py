@@ -79,8 +79,8 @@ def CreateTable(conn):
     try:
         create_statement = 'CREATE TABLE logs ('\
                     'SourceFile TEXT, SourceFilePos INTEGER, ContinuousTime TEXT, TimeUtc TEXT, Thread INTEGER, Type TEXT, '\
-                    'ActivityID INTEGER, ParentActivityID INTEGER, ProcessID INTEGER, TTL INTEGER, ProcessName TEXT, '\
-                    'SenderName TEXT, Subsystem TEXT, Category TEXT, SignpostName TEXT, SignpostInfo TEXT, '\
+                    'ActivityID INTEGER, ParentActivityID INTEGER, ProcessID INTEGER, EffectiveUID INTEGER, TTL INTEGER, '\
+                    'ProcessName TEXT, SenderName TEXT, Subsystem TEXT, Category TEXT, SignpostName TEXT, SignpostInfo TEXT, '\
                     'ImageOffset INTEGER, SenderUUID TEXT, ProcessImageUUID TEXT, SenderImagePath TEXT, '\
                     'ProcessImagePath TEXT, Message TEXT'\
                     ')'
@@ -105,12 +105,12 @@ def ProcessLogsList_Sqlite(logs, tracev3):
     if db_conn == None:
         return
     cursor = db_conn.cursor()
-    query = 'INSERT INTO logs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+    query = 'INSERT INTO logs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
     try:
         for li in logs:
             li[3] = UnifiedLogLib.ReadAPFSTime(li[3])
-            li[17] = unicode(li[17])
             li[18] = unicode(li[18])
+            li[19] = unicode(li[19])
         cursor.executemany(query, logs)
         db_conn.commit()
         cursor.close()
@@ -124,7 +124,7 @@ def ProcessLogsList_All(logs, tracev3):
     logs format = [ source_file, log_file_pos, 
                     continuous_time, time, thread, log_type, 
                     activity_id, parent_activity_id, 
-                    pid, ttl, p_name, lib, sub_system, category,
+                    pid, euid, ttl, p_name, lib, sub_system, category,
                     signpost_name, signpost_string, 
                     image_offset, image_UUID, process_image_UUID, 
                     sender_image_path, process_image_path,
@@ -147,11 +147,11 @@ def ProcessLogsList_All(logs, tracev3):
                 li[0],li[1],
                 li[2],UnifiedLogLib.ReadAPFSTime(li[3]),li[4],li[5],
                 li[6],li[7],
-                li[8],li[9],li[10],li[11],li[12],li[13],
-                li[14],li[15],
-                li[16],unicode(li[17]).upper(),unicode(li[18]).upper(),
-                li[19],li[20],
-                li[21]))
+                li[8],li[9],li[10],li[11],li[12],li[13],li[14],
+                li[15],li[16],
+                li[17],unicode(li[18]).upper(),unicode(li[19]).upper(),
+                li[20],li[21],
+                li[22]))
             total_logs_processed += 1
         except:
             log.exception('Error writing to output file')
@@ -161,15 +161,15 @@ def ProcessLogsList_DefaultFormat(logs, tracev3):
     global total_logs_processed
     for li in logs:
         try:
-            signpost = '' #(li[14] + ':') if li[14] else ''
+            signpost = '' #(li[15] + ':') if li[15] else ''
             if li[15]:
-                signpost += '[' + li[15] + ']'
+                signpost += '[' + li[16] + ']'
             msg = (signpost + ' ') if signpost else ''
-            msg += li[10] + ' ' + (( '(' + li[11] + ') ') if li[11] else '')
-            if len(li[12]) or len (li[13]):
-                msg += '[' + li[12] + ':' + li[13] + '] '
-            msg += li[21]
-            f.write(u'{time:26} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} {li[8]:<6} {li[9]:<4} {message}\r\n'.format(li=li, time=str(UnifiedLogLib.ReadAPFSTime(li[3])), message=msg))
+            msg += li[11] + ' ' + (( '(' + li[12] + ') ') if li[12] else '')
+            if len(li[13]) or len (li[14]):
+                msg += '[' + li[13] + ':' + li[14] + '] '
+            msg += li[22]
+            f.write(u'{time:26} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} {li[8]:<6} {li[10]:<4} {message}\r\n'.format(li=li, time=str(UnifiedLogLib.ReadAPFSTime(li[3])), message=msg))
             total_logs_processed += 1
         except:
             log.exception('Error writing to output file')
@@ -282,7 +282,7 @@ def main():
                 f = codecs.open(os.path.join(output_path, 'logs.txt'), 'wb', 'utf-8')
                 if args.output_format == 'TSV_ALL':
                     f.write('SourceFile\tLogFilePos\tContinousTime\tTime\tThreadId\tLogType\tActivityId\tParentActivityId\t' +
-                            'PID\tTTL\tProcessName\tSenderName\tSubsystem\tCategory\t' +
+                            'PID\tEUID\tTTL\tProcessName\tSenderName\tSubsystem\tCategory\t' +
                             'SignpostName\tSignpostString\t' + 
                             'ImageOffset\tImageUUID\tProcessImageUUID\t' +
                             'SenderImagePath\tProcessImagePath\t' +

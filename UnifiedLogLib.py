@@ -314,16 +314,15 @@ class ExtraFileReference:
         self.id = id
 
 class ProcInfo:
-    def __init__(self, id, flags, uuid_file_index, dsc_file_index, u1, u2, upid, pid, uid, u6, num_extra_uuid_refs, u8, num_subsys_cat_elements, u9, extra_file_refs):
+    def __init__(self, id, flags, uuid_file_index, dsc_file_index, proc_id1, proc_id2, pid, euid, u6, num_extra_uuid_refs, u8, num_subsys_cat_elements, u9, extra_file_refs):
         self.id = id
         self.flags = flags
         self.uuid_file_index = uuid_file_index
         self.dsc_file_index = dsc_file_index
-        self.unk_val1 = u1
-        self.unk_val2 = u2
-        self.upid = upid # secondary pid like unique value for getting unique entries when 2 proc_info have same pid
+        self.proc_id1 = proc_id1 # usually same as pid (but not always!)
+        self.proc_id2 = proc_id2 # secondary pid like unique value for getting unique entries when 2 proc_info have same pid
         self.pid = pid
-        self.uid = uid
+        self.euid = euid
         self.unk_val6 = u6
         self.num_extra_uuid_refs = num_extra_uuid_refs
         self.unk_val8 = u8
@@ -490,8 +489,8 @@ class TraceV3():
         # ProcInfos
         pos = 24 + offset_proc_info
         for i in range(num_proc_info_to_follow):
-            id, flags, file_id, dsc_file_index, u1, u2, upid, pid, uid, \
-            u6, num_extra_uuid_refs, u8 = struct.unpack("<HHhhIIIIIIII", buffer[pos:pos+40])
+            id, flags, file_id, dsc_file_index, proc_id1, proc_id2, pid, euid, \
+            u6, num_extra_uuid_refs, u8 = struct.unpack("<HHhhQIIIIII", buffer[pos:pos+40])
             pos += 40
             extra_file_refs = []
             if num_extra_uuid_refs:
@@ -503,7 +502,7 @@ class TraceV3():
                     # sometimes uuid_file_index is -ve, 0xFF7F (-129)
             num_subsys_cat_elements, u9 = struct.unpack("<II", buffer[pos:pos+8])
             pos += 8
-            proc_info = ProcInfo(id, flags, file_id, dsc_file_index, u1, u2, upid, pid, uid, u6, num_extra_uuid_refs, u8, num_subsys_cat_elements, u9, extra_file_refs)
+            proc_info = ProcInfo(id, flags, file_id, dsc_file_index, proc_id1, proc_id2, pid, euid, u6, num_extra_uuid_refs, u8, num_subsys_cat_elements, u9, extra_file_refs)
             catalog.ProcInfos.append(proc_info)
             if num_subsys_cat_elements > 0:
                 for item_index in range(num_subsys_cat_elements):
@@ -531,10 +530,10 @@ class TraceV3():
             pos += num_proc_info_indexes*2
             for proc_info_id in chunk_meta.ProcInfo_Ids:
                 # Find it in catalog.ProcInfos and insert ref in chunk_meta.ProcInfos
-                #  ref is unique by using both pid and upid 
+                #  ref is unique by using both proc_id1 and proc_id2 
                 proc_info = catalog.GetProcInfoById(proc_info_id)
                 if proc_info:    
-                    chunk_meta.ProcInfos[ proc_info.upid | (proc_info.pid << 32) ] = proc_info
+                    chunk_meta.ProcInfos[ proc_info.proc_id2 | (proc_info.proc_id1 << 32) ] = proc_info
             num_string_indexes = struct.unpack('<I', buffer[pos:pos+4])[0]
             pos += 4
             chunk_meta.StringIndexes = struct.unpack('<{}H'.format(num_string_indexes), buffer[pos:pos + (num_string_indexes*2)])
@@ -815,10 +814,10 @@ class TraceV3():
 
         return msg
 
-    def DebugPrintLog(self, file_pos, cont_time, timestamp, thread, level_type, activity, pid, ttl, p_name, lib, sub_sys, cat, msg, signpost):
+    def DebugPrintLog(self, file_pos, cont_time, timestamp, thread, level_type, activity, pid, euid, ttl, p_name, lib, sub_sys, cat, msg, signpost):
         global debug_log_count
         log.debug('{} (0x{:X}) {} ({}) 0x{:X} {} 0x{:X} {} {} '.format(debug_log_count, file_pos, \
-                    ReadAPFSTime(timestamp), cont_time, thread, level_type, activity, pid, ttl, p_name) + \
+                    ReadAPFSTime(timestamp), cont_time, thread, level_type, activity, pid, euid, ttl, p_name) + \
                     ( '[{}] '.format(signpost) if signpost else '') + \
                       '{}: '.format(p_name) + \
                     ( '({}) '.format(lib) if lib else '') + \
@@ -848,11 +847,22 @@ class TraceV3():
             tag, subtag, data_size = self.ParseChunkHeader(buffer[pos:pos+16], debug_file_pos + pos)
             pos += 16
             start_skew = pos % 8 # calculate deviation from 8-byte boundary for padding later
-            pid, upid, ttl = struct.unpack('QII', buffer[pos:pos+16]) # ttl is not for type 6001, it means something else there!
+            proc_id1, proc_id2, ttl = struct.unpack('QII', buffer[pos:pos+16]) # ttl is not for type 6001, it means something else there!
             pos2 = 16
-            proc_info = self.GetProcInfo(pid, upid, chunk_meta)
+            proc_info = self.GetProcInfo(proc_id1, proc_id2, chunk_meta)
             log_file_pos = debug_file_pos + pos + pos2 - 32
-
+            if not proc_info: # Error checking and skipping that chunk entry, so we can parse the rest
+                log.error('Could not get proc_info, skipping log @ 0x{:X}'.format(log_file_pos))
+                pos += data_size
+                if ((pos - start_skew) % 8):
+                    # sometimes no padding after privatedata. Try to detect null byte, if so pad it.
+                    if (pos+1 < len_buffer) and (buffer[pos:pos+1] == b'\x00'): 
+                        pad_len = 8 - ((pos - start_skew) % 8)
+                        pos += pad_len
+                    else:
+                        log.warning('Avoided padding for log ending @ 0x{:X}'.format(debug_file_pos + pos))
+            pid = proc_info.pid
+            euid = proc_info.euid
             if tag == 0x6001: #Firehose
                 offset_strings, strings_v_offset, unknown4, unknown5, continuousTime \
                   = struct.unpack('<HHHHQ', buffer[pos + pos2 : pos + pos2 + 16])
@@ -1162,7 +1172,7 @@ class TraceV3():
                         log_msg = self.RecreateMsgFromFmtStringAndData(format_str, log_data, log_file_pos) if log_data else format_str
                         if len(act_id) > 2: parentActivityIdentifier = act_id[-2]
                         logs.append([self.file.filename, log_file_pos, ct, time, thread, log_type, act_id[-1], parentActivityIdentifier, \
-                                        pid, ttl, p_name, lib, sub_sys, cat,\
+                                        pid, euid, ttl, p_name, lib, sub_sys, cat,\
                                         signpost_name, signpost_string if is_signpost else '', 
                                         imageOffset, imageUUID, processImageUUID, senderImagePath, processImagePath,
                                         log_msg                            
@@ -1257,7 +1267,7 @@ class TraceV3():
                     #log.debug("Type 6003 timestamp={}".format(ReadAPFSTime(time)))
 
                     logs.append([self.file.filename, log_file_pos, ct, time, 0, log_type, 0, 0, \
-                                pid, ttl, p_name, str(uuid).upper(), '', '',\
+                                pid, euid, ttl, p_name, str(uuid).upper(), '', '',\
                                 '', '', 
                                 imageOffset, imageUUID, processImageUUID, senderImagePath, processImagePath, 
                                 name + "\n" + log_msg                        
@@ -1279,10 +1289,10 @@ class TraceV3():
             #padding,moved to individual sections due to anomaly with few files, where privatedata in 0x6001 has no padding after!
 
     
-    def GetProcInfo(self, pid, upid, chunk_meta):
-        proc_info = chunk_meta.ProcInfos.get( upid | (pid << 32) , None)
+    def GetProcInfo(self, proc_id1, proc_id2, chunk_meta):
+        proc_info = chunk_meta.ProcInfos.get( proc_id2 | (proc_id1 << 32) , None)
         if proc_info == None:
-            log.error("Could not find proc_info with pid={} upid={}".format(pid, upid))
+            log.error("Could not find proc_info with proc_id1={} proc_id2={}".format(proc_id1, proc_id2))
         return proc_info
 
     def Parse(self, log_list_process_func=None):
@@ -1293,7 +1303,7 @@ class TraceV3():
            Here log_list = [ log_1, log_2, .. ], where each log_x item is a tuple
            log_x = ( log_file_pos, continuous_time, time, thread, log_type, 
                     activity_id, parent_activity_id, 
-                    pid, ttl, p_name, lib, sub_system, category,
+                    pid, euid, ttl, p_name, lib, sub_system, category,
                     signpost_name, signpost_string, 
                     image_offset, image_UUID, process_image_UUID, 
                     sender_image_path, process_image_path,

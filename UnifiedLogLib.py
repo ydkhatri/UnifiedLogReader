@@ -883,7 +883,7 @@ class TraceV3():
 
                     ts = FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
                     time = ts.time_stamp + ct - ts.continuousTime
-                    #log.debug("Type 0601 LOG timestamp={}".format(ReadAPFSTime(time)))
+                    #log.debug("Type 6001 LOG timestamp={}".format(ReadAPFSTime(time)))
                     try: # Big Exception block for any log uncaught exception
                         dsc_cache = catalog.FileObjects[proc_info.dsc_file_index] if (proc_info.dsc_file_index != -1) else None
                         ut_cache = catalog.FileObjects[proc_info.uuid_file_index]
@@ -905,17 +905,18 @@ class TraceV3():
                         cat = ''
                         ttl = 0
                         act_id = [0]
-                        has_msg_in_uuidtext = False
-                        has_ttl = False
+                        has_msg_in_uuidtext = False # main_exe     [apple]
+                        has_ttl = False             # has_rules    [apple]
                         has_act_id = False
                         has_subsys = False
-                        has_alternate_uuid = False # actually uuidtext filepath
-                        has_msg_in_dsc = False
+                        has_alternate_uuid = False  # absolute     [apple]
+                        has_msg_in_dsc = False      # shared_cache [apple]
                         has_other_act_id = False
                         has_unique_pid = False
                         has_private_data = False
                         has_sp_name = False
                         has_data_ref = False
+                        has_activity_unk = False # unknown flag
                         is_activity = False
                         log_type = 'Default'
                         u1_upper_byte = (u1 >> 8)
@@ -947,7 +948,8 @@ class TraceV3():
                         if u2 & 0x0400: has_ttl = True
                         if u2 & 0x0200: has_subsys = True if (not is_activity) else False 
                         if u2 & 0x0200: has_other_act_id = True if is_activity else False
-                        if u2 & 0x0100: has_private_data = True
+                        if u2 & 0x0100: has_private_data = True if (not is_activity) else False
+                        if u2 & 0x0100: has_activity_unk = True if is_activity else False
 
                         if u2 & 0x00E0: # E=1110
                             log.info('Unknown flag for u2 encountered u2=0x{:4X} @ 0x{:X} ct={}'.format(u2, log_file_pos, ct))
@@ -1016,7 +1018,7 @@ class TraceV3():
                                 uuid_file_id = struct.unpack('<h', buffer[pos + pos3 : pos + pos3 + 2])[0]
                                 pos3 += 2
                                 log_data_len2 -= 2
-
+                                uuid_found = False
                                 for extra_ref in proc_info.extra_file_refs:
                                     if (extra_ref.id == uuid_file_id) and \
                                     ( (u5 >= extra_ref.v_offset) and ( (u5-extra_ref.v_offset) < extra_ref.data_size) ):  # found it
@@ -1025,9 +1027,10 @@ class TraceV3():
                                         imageUUID = ut.Uuid
                                         senderImagePath = ut.library_path
                                         imageOffset = u5 - extra_ref.v_offset
+                                        uuid_found = True
                                         break
-                                if format_str == '':
-                                    log.error('Empty format string - uuid_file_id was {} u5=0x{:X} fmt_str_v_offset=0x{:X} @ 0x{:X} ct={}'.format(uuid_file_id, u5, fmt_str_v_offset, log_file_pos, ct))
+                                if not uuid_found:
+                                    log.error('no uuid found for absolute pc - uuid_file_id was {} u5=0x{:X} fmt_str_v_offset=0x{:X} @ 0x{:X} ct={}'.format(uuid_file_id, u5, fmt_str_v_offset, log_file_pos, ct))
                                     format_str = '<compose failure [missing precomposed log]>' # error message from log utility
                             else:             # UUID
                                 file_path = binascii.hexlify(buffer[pos + pos3 : pos + pos3 + 16]).upper()
@@ -1420,7 +1423,7 @@ class Uuidtext():
                 buffer = f.read(entry[2] - rel_offset)
                 return ReadCString(buffer)
         #Not found
-        log.error('Failed to find v_offset in Uuidtext! v_offset=0x{:X}'.format(v_offset))        
+        log.error('Invalid bounds 0x{:X} for {}'.format(v_offset, str(self.Uuid))) # This is error msg from 'log'
         return '<compose failure [UUID]>'
 
     def Parse(self):

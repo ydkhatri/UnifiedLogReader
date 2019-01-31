@@ -717,7 +717,11 @@ class TraceV3():
                         elif data_type & 0x1:
                             chars = '<private>'
                     else:
-                        chars = raw_data.decode('utf8').rstrip('\x00')
+                        try:
+                            chars = raw_data.decode('utf8').rstrip('\x00')
+                        except Exception as ex:
+                            log.error('Error decoding utf8 in log @ 0x{:X}, data was "{}", error was {}'.format(log_file_pos, binascii.hexlify(raw_data), str(ex)))
+                            chars = ''
                         chars = ('%'+ (flags_width_precision if flags_width_precision.find('*')==-1 else '')  + "s") % chars # Python does not like '%.*s'
                     msg += chars
                 elif specifier == 'P':  # Pointer to data of different types!
@@ -803,7 +807,7 @@ class TraceV3():
                         else: log.error('Unknown length ({}) for number '.format(data_size))
                         msg += ('%' + flags_width_precision + 'x') % number
             except:
-                log.exception('')
+                log.exception('exception for log @ 0x{:X}'.format(log_file_pos))
                 msg += "E-R-R-O-R"
 
         if format_str_consumed < len_format_str:

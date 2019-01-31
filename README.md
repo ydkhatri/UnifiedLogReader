@@ -23,7 +23,12 @@ The script needs access to files from 3 folders -
 
 The tracev3 files are located within the diagnostics folder. If you have a disk image, just extract the diagnostics and uuidtext folders (shown at paths above) and provide it to this script.
 
-Currently the script supports TSV and sqlite output. 
+Currently the script supports TSV and sqlite output.
+## Output options
+_SQLITE_ gives you every available field in an sqlite db  
+_TSV_ALL_ gives you every available field in a tab-seperated file  
+_TSV_DEFAULT_ gives only those fields shown by 'log' utility (with no options specified)
+
 
 ```
 G:\>c:\Python27\python.exe c:\Github\UnifiedLogReader\UnifiedLogReader.py -h

@@ -687,6 +687,7 @@ class TraceV3():
                             log.error('unknown err, size=0, data_type=0x{:X}'.format(data_type))
                     else: # size should be 4 or 8
                         if specifier in ('d', 'D'): # signed int32 or int64
+                            specifier = 'd'  # Python does not support 'D'
                             if   data_size == 4: number = struct.unpack("<i", raw_data)[0] 
                             elif data_size == 8: number = struct.unpack("<q", raw_data)[0] 
                             else: log.error('Unknown length ({}) for number '.format(data_size))
@@ -694,6 +695,8 @@ class TraceV3():
                             if   data_size == 4: number = struct.unpack("<I", raw_data)[0] 
                             elif data_size == 8: number = struct.unpack("<Q", raw_data)[0] 
                             else: log.error('Unknown length ({}) for number '.format(data_size))
+                            if   specifier == 'U': specifier = 'u'  # Python does not support 'U'
+                            elif specifier == 'O': specifier = 'o'  # Python does not support 'O'
                         msg += ('%'+ flags_width_precision + specifier) % number
                 elif specifier in ('f', 'e', 'E', 'g', 'G', 'a', 'A', 'F'): # double 64 bit (or 32 bit float if 'lf')
                     number = 0
@@ -727,7 +730,7 @@ class TraceV3():
                 elif specifier == 'P':  # Pointer to data of different types!
                     if not custom_specifier:
                         msg += hit.group(0)
-                        log.info("Unknown data object with no custom specifier")
+                        log.info("Unknown data object with no custom specifier in log @ 0x{:X}".format(log_file_pos))
                         continue
                     if data_size == 0:
                         if data_type & 0x1:
@@ -738,7 +741,7 @@ class TraceV3():
                         if data_size == 0: # size
                             if data_type & 0x1:
                                 msg += '<private>'
-                            else: log.error('unknown err, size=0, data_type=0x{:X}'.format(data_type))
+                            else: log.error('unknown err, size=0, data_type=0x{:X} in log @ 0x{:X}'.format(data_type, log_file_pos))
                         else:
                             uuid = UUID(bytes=raw_data)
                             msg += str(uuid).upper()
@@ -754,7 +757,7 @@ class TraceV3():
                             domain = ReadCString(raw_data[5:], len(raw_data) - 5)
                             msg += 'user: {}@{}'.format(uid, domain)
                         else:
-                            log.error("Unknown value for mbr_details found 0x{}".format(unk.encode('hex')))
+                            log.error("Unknown value for mbr_details found 0x{} in log @ 0x{:X}".format(unk.encode('hex'), log_file_pos))
                     elif custom_specifier.find('odtypes:nt_sid_t') > 0: 
                         msg += ReadNtSid(raw_data)
                     elif custom_specifier.find('location:SqliteResult') > 0:
@@ -785,14 +788,14 @@ class TraceV3():
                             ipv4_str = '{}.{}.{}.{}'.format(ipv4[0],ipv4[1],ipv4[2],ipv4[3])
                             msg += ipv4_str # TODO- test this, not seen yet!
                         else:
-                            log.error("Unknown sock family value 0x{:X}".format(family))
+                            log.error("Unknown sock family value 0x{:X} in log @ 0x{:X}".format(family, log_file_pos))
                     # elif custom_specifier.find('_CLDaemonStatusStateTrackerState') > 0:
                     #     msg += Read_CLDaemonStatusStateTrackerState(raw_data)
                     elif custom_specifier.find('_CLClientManagerStateTrackerState') > 0:
                         msg += Read_CLClientManagerStateTrackerState(raw_data)
                     else:
                         msg += hit.group(0)
-                        log.info("Unknown custom data object type '{}' data size=0x{:X}".format(custom_specifier, len(raw_data)))
+                        log.info("Unknown custom data object type '{}' data size=0x{:X} in log @ 0x{:X}".format(custom_specifier, len(raw_data), log_file_pos))
                         pass #TODO
                 elif specifier == 'p':  # Should be 8bytes to be displayed as uint 32/64 in hex lowercase no leading zeroes
                     number = ''
@@ -800,11 +803,11 @@ class TraceV3():
                         if data_type & 0x1:
                             msg += '<private>'
                         else:
-                            log.error('unknown err, size=0, data_type=0x{:X}'.format(data_type))
+                            log.error('unknown err, size=0, data_type=0x{:X} in log @ 0x{:X}'.format(data_type, log_file_pos))
                     else: # size should be 8 or 4
                         if   data_size == 8: number = struct.unpack("<Q", raw_data)[0]
                         elif data_size == 4: number = struct.unpack("<I", raw_data)[0]
-                        else: log.error('Unknown length ({}) for number '.format(data_size))
+                        else: log.error('Unknown length ({}) for number in log @ 0x{:X}'.format(data_size, log_file_pos))
                         msg += ('%' + flags_width_precision + 'x') % number
             except:
                 log.exception('exception for log @ 0x{:X}'.format(log_file_pos))

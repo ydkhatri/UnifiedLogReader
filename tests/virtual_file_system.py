@@ -21,7 +21,8 @@ class VirtualFileSystemTests(test_lib.BaseTestCase):
         file_system = virtual_file_system.VirtualFileSystem(
             virtual_file.VirtualFile)
 
-        path = os.path.join(self._TEST_DATA_PATH, 'LICENSE.txt')
+        path = os.path.join(
+            self._TEST_DATA_PATH, '0D3C2953A33917B333DD8366AC25F2')
         result = file_system.path_exists(path)
         self.assertTrue(result)
 
@@ -34,9 +35,10 @@ class VirtualFileSystemTests(test_lib.BaseTestCase):
         file_system = virtual_file_system.VirtualFileSystem(
             virtual_file.VirtualFile)
 
+        expected_directory_entries = ['0D3C2953A33917B333DD8366AC25F2']
         directory_entries = file_system.listdir(self._TEST_DATA_PATH)
         self.assertEqual(len(directory_entries), 1)
-        self.assertEqual(directory_entries, ['LICENSE.txt'])
+        self.assertEqual(directory_entries, expected_directory_entries)
 
     def testIsDir(self):
         '''Tests the is_dir function.'''
@@ -46,7 +48,8 @@ class VirtualFileSystemTests(test_lib.BaseTestCase):
         result = file_system.is_dir(self._TEST_DATA_PATH)
         self.assertTrue(result)
 
-        path = os.path.join(self._TEST_DATA_PATH, 'LICENSE.txt')
+        path = os.path.join(
+            self._TEST_DATA_PATH, '0D3C2953A33917B333DD8366AC25F2')
         result = file_system.is_dir(path)
         self.assertFalse(result)
 
@@ -55,8 +58,10 @@ class VirtualFileSystemTests(test_lib.BaseTestCase):
         file_system = virtual_file_system.VirtualFileSystem(
             virtual_file.VirtualFile)
 
-        expected_path = os.path.join(self._TEST_DATA_PATH, 'LICENSE.txt')
-        path = file_system.path_join(self._TEST_DATA_PATH, 'LICENSE.txt')
+        expected_path = os.path.join(
+            self._TEST_DATA_PATH, '0D3C2953A33917B333DD8366AC25F2')
+        path = file_system.path_join(
+            self._TEST_DATA_PATH, '0D3C2953A33917B333DD8366AC25F2')
         self.assertEqual(path, expected_path)
 
     def testGetVirtualFile(self):
@@ -64,8 +69,9 @@ class VirtualFileSystemTests(test_lib.BaseTestCase):
         file_system = virtual_file_system.VirtualFileSystem(
             virtual_file.VirtualFile)
 
-        path = os.path.join(self._TEST_DATA_PATH, 'LICENSE.txt')
-        file_object = file_system.get_virtual_file(path, filetype='test')
+        path = os.path.join(
+            self._TEST_DATA_PATH, '0D3C2953A33917B333DD8366AC25F2')
+        file_object = file_system.get_virtual_file(path, filetype='uuidtext')
         self.assertIsNotNone(file_object)
         self.assertIsInstance(file_object, virtual_file.VirtualFile)
 

@@ -48,10 +48,11 @@ import time
 from UnifiedLog import __version__
 from UnifiedLog import Lib as UnifiedLogLib
 from UnifiedLog import logger
+from UnifiedLog import virtual_file
 
 
 f = None
-vfs = UnifiedLogLib.VirtualFileSystem(UnifiedLogLib.VirtualFile)
+vfs = UnifiedLogLib.VirtualFileSystem(virtual_file.VirtualFile)
 total_logs_processed = 0
 db_conn = None
 
@@ -184,7 +185,8 @@ def RecurseProcessLogFiles(input_path, ts_list, uuidtext_folder_path, caches, pr
         input_file_path = os.path.join(input_path, file_name)
         if file_name.lower().endswith('.tracev3') and not file_name.startswith('._'):
             logger.info("Trying to read file - " + input_file_path)
-            UnifiedLogLib.TraceV3(vfs, UnifiedLogLib.VirtualFile(input_file_path, 'traceV3'), ts_list, uuidtext_folder_path, caches).Parse(proc_func)
+            file_object = virtual_file.VirtualFile(input_file_path, 'traceV3')
+            UnifiedLogLib.TraceV3(vfs, file_object, ts_list, uuidtext_folder_path, caches).Parse(proc_func)
         elif os.path.isdir(input_file_path):
             RecurseProcessLogFiles(input_file_path, ts_list, uuidtext_folder_path, caches, proc_func)
 
@@ -308,7 +310,8 @@ def main():
         if recurse:
             RecurseProcessLogFiles(tracev3_path, ts_list, uuidtext_folder_path, caches, proc_func)
         else:
-            UnifiedLogLib.TraceV3(vfs, UnifiedLogLib.VirtualFile(tracev3_path, 'traceV3'), ts_list, uuidtext_folder_path, caches).Parse(proc_func)
+            file_object = virtual_file.VirtualFile(input_file_path, 'traceV3')
+            UnifiedLogLib.TraceV3(vfs, file_object, ts_list, uuidtext_folder_path, caches).Parse(proc_func)
         if f:
             f.close()
         if db_conn:

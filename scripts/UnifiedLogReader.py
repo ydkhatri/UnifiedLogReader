@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 # Unified log reader
 # Copyright (c) 2018  Yogesh Khatri <yogesh@swiftforensics.com> (@swiftforensics)
@@ -43,7 +44,9 @@ import os
 import sqlite3
 import sys
 import time
-import UnifiedLogLib
+
+from UnifiedLog import Lib as UnifiedLogLib
+
 
 log = logging.getLogger('UNIFIED_LOG_READER')
 UnifiedLogLib.log = log

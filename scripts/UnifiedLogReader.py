@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Unified log reader
 # Copyright (c) 2018  Yogesh Khatri <yogesh@swiftforensics.com> (@swiftforensics)
 #
@@ -27,9 +27,9 @@
 # Author       : Yogesh Khatri
 # Last Updated : 2019-01-23
 # Purpose/Usage: This script will read unified logs. Tested on python2.7
-# 
-# Notes: 
-# Currently this is tested on version 17(0x11) of the tracev3 file used in 
+#
+# Notes:
+# Currently this is tested on version 17(0x11) of the tracev3 file used in
 # macOS Sierra (10.12.5) and above (including Mojave 10.14.2). It will not
 # work on Sierra (10.12) as it uses version 14(0xE), a later update will
 # address this.
@@ -119,17 +119,17 @@ def ProcessLogsList_Sqlite(logs, tracev3):
         cursor.close()
         total_logs_processed += len(logs)
     except:
-        log.exception('Error inserting data into database')    
+        log.exception('Error inserting data into database')
 
 def ProcessLogsList_All(logs, tracev3):
     '''
     Function to process a list of log items.
-    logs format = [ source_file, log_file_pos, 
-                    continuous_time, time, thread, log_type, 
-                    activity_id, parent_activity_id, 
+    logs format = [ source_file, log_file_pos,
+                    continuous_time, time, thread, log_type,
+                    activity_id, parent_activity_id,
                     pid, euid, ttl, p_name, lib, sub_system, category,
-                    signpost_name, signpost_string, 
-                    image_offset, image_UUID, process_image_UUID, 
+                    signpost_name, signpost_string,
+                    image_offset, image_UUID, process_image_UUID,
                     sender_image_path, process_image_path,
                     log_msg
                   ]
@@ -181,7 +181,7 @@ def RecurseProcessLogFiles(input_path, ts_list, uuidtext_folder_path, caches, pr
     '''Recurse the folder located by input_path and process all .traceV3 files'''
     global vfs
     files = os.listdir(input_path)
-    
+
     for file_name in files:
         input_file_path = os.path.join(input_path, file_name)
         if file_name.lower().endswith('.tracev3') and not file_name.startswith('._'):
@@ -200,7 +200,7 @@ def main():
     arg_parser = argparse.ArgumentParser(description='UnifiedLogReader is a tool to read macOS Unified Logging tracev3 files.\r\n'\
                                             'This is version 1.0 tested on macOS 10.12.5 - 10.14.3.\n\nNotes:\n-----\n'\
                                             'If you have a .logarchive, then point uuidtext_path to the .logarchive folder,\n'\
-                                            ' the timesync folder is within the logarchive folder', 
+                                            ' the timesync folder is within the logarchive folder',
                                             formatter_class=argparse.RawTextHelpFormatter)
     arg_parser.add_argument('uuidtext_path', help='Path to uuidtext folder (/var/db/uuidtext)')
     arg_parser.add_argument('timesync_path', help='Path to timesync folder (/var/db/diagnostics/timesync)')
@@ -231,7 +231,7 @@ def main():
     if not os.path.exists(output_path):
         print ('Creating output folder {}'.format(output_path))
         os.makedirs(output_path)
-    
+
     # output format
     if args.output_format:
         args.output_format = args.output_format.upper()
@@ -286,7 +286,7 @@ def main():
                 if args.output_format == 'TSV_ALL':
                     f.write('SourceFile\tLogFilePos\tContinousTime\tTime\tThreadId\tLogType\tActivityId\tParentActivityId\t' +
                             'PID\tEUID\tTTL\tProcessName\tSenderName\tSubsystem\tCategory\t' +
-                            'SignpostName\tSignpostString\t' + 
+                            'SignpostName\tSignpostString\t' +
                             'ImageOffset\tImageUUID\tProcessImageUUID\t' +
                             'SenderImagePath\tProcessImagePath\t' +
                             'LogMessage\r\n')
@@ -315,7 +315,7 @@ def main():
             f.close()
         if db_conn:
             CloseDB()
-        
+
         time_processing_ended = time.time()
         run_time = time_processing_ended - time_processing_started
         log.info("Finished in time = {}".format(time.strftime('%H:%M:%S', time.gmtime(run_time))))

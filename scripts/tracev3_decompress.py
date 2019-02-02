@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-# 
+#
 # This script will produce a decompressed .tracev3 file for analysis.
-# Provide either a file or a folder as argument, it will decompress all .tracev3 
+# Provide either a file or a folder as argument, it will decompress all .tracev3
 # files found recursively (if folder is provided). Output will be in same folder
 # as original tracev3 file and will have .dec appended to name.
-# 
+#
 # (c) Yogesh Khatri 2018
 #
 # Tested on Sierra, High Sierra and Mojave
@@ -35,7 +35,7 @@ def DecompressFile(input_path, output_path):
                         out_file.write(block_data) # boot_uuid header, write to output directly
                     elif header[0] == b'\x0B':
                         out_file.write(block_data) # uncompressed, write to output directly
-                    elif header[0] == b'\x0D': 
+                    elif header[0] == b'\x0D':
                         if block_data[16:20] in [b'bv41', b'bv4-']:
                             uncompressed = b''
                             last_uncompressed = b''

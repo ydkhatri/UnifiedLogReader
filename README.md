@@ -1,21 +1,28 @@
 # UnifiedLogReader
+
 A parser for Unified logging .tracev3 files.
 
 ## Project Status
-#### alpha, experimental
+
+### pre-alpha (experimental)
+
 _This is a work in progress.. Currently this does not support the first version of tracev3 which is seen on macOS 10.12.0 (which uses catalog v2). It has been tested to work on catalog v3 files used in macOS 10.12.5 upto the current 10.14.3_
 
 ## License
+
 MIT
+
 ## Requirements
-32 bit Python 2.7 and the following modules
+
+32-bit Python 2.7 and the following modules
 * lz4
 * biplist
 * ipaddress
 
-The modules can easily be installed using `pip install lz4 biplist ipaddress`
+The modules can easily be installed using `pip install -r requirements.txt`
 
 ## Usage
+
 The script needs access to files from 3 folders -
 * /private/var/db/diagnostics
 * /private/var/db/diagnostics/timesync
@@ -24,7 +31,9 @@ The script needs access to files from 3 folders -
 The tracev3 files are located within the diagnostics folder. If you have a disk image, just extract the diagnostics and uuidtext folders (shown at paths above) and provide it to this script.
 
 Currently the script supports TSV and sqlite output.
+
 ## Output options
+
 _SQLITE_ gives you every available field in an sqlite db  
 _TSV_ALL_ gives you every available field in a tab-seperated file  
 _TSV_DEFAULT_ gives only those fields shown by 'log' utility (with no options specified)

@@ -1,0 +1,4 @@
+pip >= 7.0.0
+biplist >= 1.0.3
+ipaddress ; python_version < '3.0'
+lz4 >= 0.10.0

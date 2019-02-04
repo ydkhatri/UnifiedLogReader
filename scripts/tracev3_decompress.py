@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # 
 # This script will produce a decompressed .tracev3 file for analysis.
 # Provide either a file or a folder as argument, it will decompress all .tracev3 
@@ -7,12 +8,14 @@
 # (c) Yogesh Khatri 2018
 #
 # Tested on Sierra, High Sierra and Mojave
-#
-import lz4.block
-import os
-import sys
+
 import binascii
+import os
 import struct
+import sys
+
+import lz4.block
+
 
 def DecompressFile(input_path, output_path):
     try:

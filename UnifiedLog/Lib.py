@@ -35,19 +35,21 @@
 
 from __future__ import print_function
 from __future__ import unicode_literals
-from uuid import UUID
+
 import binascii
-import biplist
 import datetime
 import ipaddress
 import logging
-import lz4.block
 import os
 import re
 import struct
 import time
 
-__VERSION__ = '0.2'
+from uuid import UUID
+
+import biplist
+import lz4.block
+
 
 log = logging.getLogger('UNIFIED_LOG_READER_LIB')
 

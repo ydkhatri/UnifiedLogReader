@@ -46,6 +46,7 @@ import sys
 import time
 
 from UnifiedLog import Lib as UnifiedLogLib
+from UnifiedLog import __version__
 
 
 log = logging.getLogger('UNIFIED_LOG_READER')
@@ -198,7 +199,7 @@ def main():
     recurse = False
 
     arg_parser = argparse.ArgumentParser(description='UnifiedLogReader is a tool to read macOS Unified Logging tracev3 files.\r\n'\
-                                            'This is version ' + UnifiedLogLib.__version__ + ' tested on macOS 10.12.5 - 10.14.3.\n\nNotes:\n-----\n'\
+                                            'This is version ' + __version__ + ' tested on macOS 10.12.5 - 10.14.3.\n\nNotes:\n-----\n'\
                                             'If you have a .logarchive, then point uuidtext_path to the .logarchive folder,\n'\
                                             ' the timesync folder is within the logarchive folder', 
                                             formatter_class=argparse.RawTextHelpFormatter)

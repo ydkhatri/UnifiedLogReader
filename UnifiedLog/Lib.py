@@ -2,7 +2,7 @@
 # Unified log reader library
 # Script Name   : UnifiedLogLib.py
 # Author        : Yogesh Khatri
-# Last Updated  : 2019-01-18
+# Last Updated  : 2019-02-05
 # Purpose/Usage : This library will read unified logs (.traceV3 files)
 # Notes         : Needs python2 (not python3 ready yet!)
 #
@@ -41,6 +41,7 @@ import datetime
 import ipaddress
 import logging
 import os
+import posixpath
 import re
 import struct
 import time
@@ -1469,7 +1470,7 @@ class Uuidtext():
             f.seek(data_offset)
             path_buffer = f.read(1024)
             self.library_path = ReadCString(path_buffer)
-            self.library_name = os.path.basename(self.library_path)
+            self.library_name = posixpath.basename(self.library_path)
 
         except:
             log.exception('Uuidtext Parser error')
@@ -1564,7 +1565,7 @@ class Dsc():
                 f.seek(data_offset)
                 path_buffer = f.read(1024) # File path should not be >1024
                 lib_path = ReadCString(path_buffer)
-                lib_name = os.path.basename(lib_path)
+                lib_name = posixpath.basename(lib_path)
                 self.uuid_entries.append([v_off, size, uuid, lib_path, lib_name])
                 pos += 28
         except:

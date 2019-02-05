@@ -1,4 +1,4 @@
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Unified log reader library
 # Script Name   : UnifiedLogLib.py
 # Author        : Yogesh Khatri
@@ -6,7 +6,7 @@
 # Purpose/Usage : This library will read unified logs (.traceV3 files)
 # Notes         : Needs python2 (not python3 ready yet!)
 #
-# Currently this is tested on version 17(0x11) of the tracev3 file used in 
+# Currently this is tested on version 17(0x11) of the tracev3 file used in
 # macOS Sierra (10.12.5) and above (including Mojave 10.14.2). It will not
 # work on Sierra (10.12) as it uses version 14(0xE), a later update will
 # address this.
@@ -106,16 +106,16 @@ class VirtualFileSystem(object):
     '''
         This class implements the file system functions that the library relies on.
         In this base class, they default to the local OS ones such as os.path.exits(),
-        os.listdir() and a few others. To make them do something else, inherit the 
+        os.listdir() and a few others. To make them do something else, inherit the
         class and override its methods.
     '''
     def __init__(self, virtual_file_class):
         self.virtual_file_class = virtual_file_class
-    
+
     def path_exists(self, path):
         '''Return True if file/folder specified by 'path' exists'''
         return os.path.exists(path)
-    
+
     def listdir(self, path):
         '''Return a list of all files/folders contained at given path'''
         return os.listdir(path)
@@ -169,7 +169,7 @@ def Read_CLClientManagerStateTrackerState(data):
 # https://github.com/nst/iOS-Runtime-Headers/blob/fbb634c78269b0169efdead80955ba64eaaa2f21/Frameworks/CoreLocation.framework/CLLocationManagerStateTracker.h
 
 #def Read_CLDaemonStatusStateTrackerState(data):
-    ''' size=0x28 
+    ''' size=0x28
         From classdump of locationd.nsxpc from:
         https://gist.github.com/razvand/578f94748b624f4d47c1533f5a02b095
         struct Battery {
@@ -199,7 +199,7 @@ def Read_CLClientManagerStateTrackerState(data):
          "airplaneMode":false}
 
     '''
-    # 
+    #
     #pass
 
 
@@ -407,7 +407,7 @@ class TraceV3():
         self.regex = re.compile(self.regex_pattern)
         # from header items
         self.system_boot_uuid = None
-        self.large_data = {} # key = ( data_ref_id << 64 | contTime ) , value = data 
+        self.large_data = {} # key = ( data_ref_id << 64 | contTime ) , value = data
         self.boot_uuid_ts_list = None
         self.chunk_read_count = 0
 
@@ -532,9 +532,9 @@ class TraceV3():
             pos += num_proc_info_indexes*2
             for proc_info_id in chunk_meta.ProcInfo_Ids:
                 # Find it in catalog.ProcInfos and insert ref in chunk_meta.ProcInfos
-                #  ref is unique by using both proc_id1 and proc_id2 
+                #  ref is unique by using both proc_id1 and proc_id2
                 proc_info = catalog.GetProcInfoById(proc_info_id)
-                if proc_info:    
+                if proc_info:
                     chunk_meta.ProcInfos[ proc_info.proc_id2 | (proc_info.proc_id1 << 32) ] = proc_info
             num_string_indexes = struct.unpack('<I', buffer[pos:pos+4])[0]
             pos += 4
@@ -554,14 +554,14 @@ class TraceV3():
         descriptors = []
         if buf_size == 0:
             return data
-        
+
         total_items = struct.unpack('<B', buffer[-1])[0]
         pos = buf_size - 1
         if buf_size == 1:
             if total_items != 0:
                 log.error('Unknown data found in log data buffer')
             return data
-        
+
         items_read = 0
         pos -= total_items
         while items_read < total_items:
@@ -580,7 +580,7 @@ class TraceV3():
             data.append( [0, size, item_data] )
             pos += size
             items_read += 1
-        
+
         return data
 
     def ReadLogDataBuffer(self, buffer, buf_size, strings_buffer):
@@ -589,7 +589,7 @@ class TraceV3():
 
         data = []
         data_descriptors=[] # [ (data_index, offset, size, data_type), .. ]
-        
+
         unknown, total_items = struct.unpack('<BB', buffer[0:2])
         pos = 2
         pos_debug = 0
@@ -606,7 +606,7 @@ class TraceV3():
                 data.append([item_type, item_size, buffer[pos:pos+item_size]])
             elif item_type == 2: # %p (printed as hex with 0x prefix)
                 data.append([item_type, item_size, buffer[pos:pos+item_size]])
-            elif item_type in (0x20, 0x21, 0x22, 0x40, 0x41, 0x42, 0x31, 0x32): # string descriptor 0x22={public}%s 0x4x shows as %@ (if size=0, then '(null)') 
+            elif item_type in (0x20, 0x21, 0x22, 0x40, 0x41, 0x42, 0x31, 0x32): # string descriptor 0x22={public}%s 0x4x shows as %@ (if size=0, then '(null)')
                 # byte 0xAB A=type(0=num,1=len??,2=string in stringsbuf,4=object)  B=style (0=normal,1=private,2={public})
                 # 0x3- is for %.*P object types
                 offset, size = struct.unpack('<HH', buffer[pos:pos+4])
@@ -690,12 +690,12 @@ class TraceV3():
                     else: # size should be 4 or 8
                         if specifier in ('d', 'D'): # signed int32 or int64
                             specifier = 'd'  # Python does not support 'D'
-                            if   data_size == 4: number = struct.unpack("<i", raw_data)[0] 
-                            elif data_size == 8: number = struct.unpack("<q", raw_data)[0] 
+                            if   data_size == 4: number = struct.unpack("<i", raw_data)[0]
+                            elif data_size == 8: number = struct.unpack("<q", raw_data)[0]
                             else: log.error('Unknown length ({}) for number '.format(data_size))
                         else:
-                            if   data_size == 4: number = struct.unpack("<I", raw_data)[0] 
-                            elif data_size == 8: number = struct.unpack("<Q", raw_data)[0] 
+                            if   data_size == 4: number = struct.unpack("<I", raw_data)[0]
+                            elif data_size == 8: number = struct.unpack("<Q", raw_data)[0]
                             else: log.error('Unknown length ({}) for number '.format(data_size))
                             if   specifier == 'U': specifier = 'u'  # Python does not support 'U'
                             elif specifier == 'O': specifier = 'o'  # Python does not support 'O'
@@ -760,7 +760,7 @@ class TraceV3():
                             msg += 'user: {}@{}'.format(uid, domain)
                         else:
                             log.error("Unknown value for mbr_details found 0x{} in log @ 0x{:X}".format(unk.encode('hex'), log_file_pos))
-                    elif custom_specifier.find('odtypes:nt_sid_t') > 0: 
+                    elif custom_specifier.find('odtypes:nt_sid_t') > 0:
                         msg += ReadNtSid(raw_data)
                     elif custom_specifier.find('location:SqliteResult') > 0:
                         number = struct.unpack("<I", raw_data)[0]
@@ -865,7 +865,7 @@ class TraceV3():
                 pos += data_size
                 if ((pos - start_skew) % 8):
                     # sometimes no padding after privatedata. Try to detect null byte, if so pad it.
-                    if (pos+1 < len_buffer) and (buffer[pos:pos+1] == b'\x00'): 
+                    if (pos+1 < len_buffer) and (buffer[pos:pos+1] == b'\x00'):
                         pad_len = 8 - ((pos - start_skew) % 8)
                         pos += pad_len
                     else:
@@ -886,18 +886,18 @@ class TraceV3():
 
                 ts = FindClosestTimesyncItemInList(self.boot_uuid_ts_list, continuousTime)
                 self.DebugPrintTimestampFromContTime(continuousTime, "Type 6001")
-                
+
                 logs_end_offset = offset_strings + 16
                 while pos2 < logs_end_offset:
-                    # Log item 
+                    # Log item
                     log_start_pos = pos + pos2
                     start_skew = pos2 % 8
                     u1, u2, fmt_str_v_offset, thread, ct_rel, ct_rel_upper, log_data_len = struct.unpack('<HHIQIHH', buffer[pos + pos2 : pos + pos2 + 24])
                     pos2 += 24
-                    
+
                     ct = continuousTime + (ct_rel | (ct_rel_upper << 32))
                     # processing
-                    log_file_pos = debug_file_pos + pos + pos2 - 24 
+                    log_file_pos = debug_file_pos + pos + pos2 - 24
                     #log.debug('log_file_pos=0x{:X}'.format(log_file_pos))
 
                     ts = FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
@@ -949,7 +949,7 @@ class TraceV3():
                             if u1_upper_byte & 0x82 == 0x82: signpost_string += ' end'      # signpostType
                             elif u1_upper_byte & 0x81 == 0x81: signpost_string += ' begin'
                             else:                            signpost_string += ' event'
-                        elif u1_upper_byte == 0x01: 
+                        elif u1_upper_byte == 0x01:
                             log_type = 'Info'
                             if (u1 & 0x0F) == 0x02:
                                 log_type ='Activity'
@@ -958,14 +958,14 @@ class TraceV3():
                         elif u1_upper_byte == 0x10: log_type = 'Error'
                         elif u1_upper_byte == 0x11: log_type = 'Fault'
 
-                        if u2 & 0x7000: 
+                        if u2 & 0x7000:
                             log.info('Unknown flag for u2 encountered u2=0x{:4X} @ 0x{:X} ct={}'.format(u2, log_file_pos, ct))
                             #raise ValueError('Unk u2 flag')
                         if u2 & 0x8000: has_sp_name = True
 
                         if u2 & 0x0800: has_data_ref = True
                         if u2 & 0x0400: has_ttl = True
-                        if u2 & 0x0200: has_subsys = True if (not is_activity) else False 
+                        if u2 & 0x0200: has_subsys = True if (not is_activity) else False
                         if u2 & 0x0200: has_other_act_id = True if is_activity else False
                         if u2 & 0x0100: has_private_data = True if (not is_activity) else False
                         if u2 & 0x0100: has_activity_unk = True if is_activity else False
@@ -1021,7 +1021,7 @@ class TraceV3():
                                     log.error('Expected activityID, got something else!')
 
                         if has_private_data:
-                            if private_strings:    
+                            if private_strings:
                                 priv_str_v_offset, priv_str_len = struct.unpack('<HH', buffer[pos + pos3 : pos + pos3 + 4])
                                 pos3 += 4
                                 log_data_len2 -= 4
@@ -1079,14 +1079,14 @@ class TraceV3():
                                     senderImagePath = ut.library_path
                                 else:
                                     log.debug("Could not read from uuidtext {} @ 0x{:X} ct={}".format(file_path, log_file_pos, ct))
-                        
+
                         if not is_activity:
                             if has_subsys:
                                 item_id = struct.unpack('<H', buffer[pos + pos3 : pos + pos3 + 2])[0]
                                 pos3 += 2
                                 log_data_len2 -= 2
                                 sub_sys, cat = proc_info.GetSubSystemAndCategory(item_id)
-                            
+
                             if has_ttl:
                                 ttl = struct.unpack('<B', buffer[pos + pos3 : pos + pos3 + 1])[0]
                                 pos3 += 1
@@ -1097,7 +1097,7 @@ class TraceV3():
                                 pos3 += 2
                                 log_data_len2 -= 2
                                 log.debug('Data reference ID = {:4X}'.format(data_ref_id))
-                                
+
                             if is_signpost:
                                 spid_val = struct.unpack('<Q', buffer[pos + pos3 : pos + pos3 + 8])[0]
                                 pos3 += 8
@@ -1175,34 +1175,34 @@ class TraceV3():
                                 log.error('Data Reference not found for unique_ref=0x{:X} ct={}!'.format(unique_ref, ct))
                                 format_str = "<decode: missing data>"
                                 # TODO - Sometimes this data is in another file, create a mechanism to deal with that
-                                # Eg: Logdata.Livedata.tracev3 will reference entries from Persist\*.tracev3 
+                                # Eg: Logdata.Livedata.tracev3 will reference entries from Persist\*.tracev3
                                 #  There are very few of these in practice.
 
                         log_msg = self.RecreateMsgFromFmtStringAndData(format_str, log_data, log_file_pos) if log_data else format_str
                         if len(act_id) > 2: parentActivityIdentifier = act_id[-2]
                         logs.append([self.file.filename, log_file_pos, ct, time, thread, log_type, act_id[-1], parentActivityIdentifier, \
                                         pid, euid, ttl, p_name, lib, sub_sys, cat,\
-                                        signpost_name, signpost_string if is_signpost else '', 
+                                        signpost_name, signpost_string if is_signpost else '',
                                         imageOffset, imageUUID, processImageUUID, senderImagePath, processImagePath,
-                                        log_msg                            
+                                        log_msg
                                     ])
                     except Exception as ex:
                         log.exception("Exception while processing log @ 0x{:X} ct={}, skipping that log entry!".format(log_file_pos, ct))
                     ##
                     debug_log_count += 1
-                    
+
                     pos2 += log_data_len
                     #padding
-                    if ((pos2 - start_skew) % 8) != 0: 
+                    if ((pos2 - start_skew) % 8) != 0:
                         pos2 += 8 - ((pos2 - start_skew) % 8)
                     num_logs_debug += 1
 
                 log.debug("Parsed {} type 6001 logs".format(num_logs_debug))
-               
+
                 pos += data_size
                 if ((pos - start_skew) % 8):
                     # sometimes no padding after privatedata. Try to detect null byte, if so pad it.
-                    if (pos+1 < len_buffer) and (buffer[pos:pos+1] == b'\x00'): 
+                    if (pos+1 < len_buffer) and (buffer[pos:pos+1] == b'\x00'):
                         pad_len = 8 - ((pos - start_skew) % 8)
                         pos += pad_len
                     else:
@@ -1212,7 +1212,7 @@ class TraceV3():
                 pos2 += 16
                 data = buffer[pos + pos2 : pos + pos2 + data_len]
                 self.large_data[data_ref_id << 64 | ct] = data
-                
+
                 pos2 += data_len
                 ## Debug print
                 ts = FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
@@ -1235,7 +1235,7 @@ class TraceV3():
                 else:
                     obj_type_str_1 = ReadCString(buffer[pos + pos2 : pos + pos2 + 64])
                     pos2 += 64
-                    obj_type_str_2 = ReadCString(buffer[pos + pos2 : pos + pos2 + 64]) 
+                    obj_type_str_2 = ReadCString(buffer[pos + pos2 : pos + pos2 + 64])
                     pos2 += 64
 
                 name = ReadCString(buffer[pos + pos2 : pos + pos2 + 64], 64)
@@ -1258,7 +1258,7 @@ class TraceV3():
                         else:
                             log.error('Did not read data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
                     else:
-                        log.error('Unknown data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))           
+                        log.error('Unknown data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
                     pos2 += data_len
 
                 try: # for any uncaught exception
@@ -1277,9 +1277,9 @@ class TraceV3():
 
                     logs.append([self.file.filename, log_file_pos, ct, time, 0, log_type, 0, 0, \
                                 pid, euid, ttl, p_name, str(uuid).upper(), '', '',\
-                                '', '', 
-                                imageOffset, imageUUID, processImageUUID, senderImagePath, processImagePath, 
-                                name + "\n" + log_msg                        
+                                '', '',
+                                imageOffset, imageUUID, processImageUUID, senderImagePath, processImagePath,
+                                name + "\n" + log_msg
                                 ])
                 except:
                     log.exception("Exception while processing logtype 'State' @ 0x{:X} ct={}, skipping that log entry!".format(log_file_pos, ct))
@@ -1297,7 +1297,7 @@ class TraceV3():
                     pos += pad_len
             #padding,moved to individual sections due to anomaly with few files, where privatedata in 0x6001 has no padding after!
 
-    
+
     def GetProcInfo(self, proc_id1, proc_id2, chunk_meta):
         proc_info = chunk_meta.ProcInfos.get( proc_id2 | (proc_id1 << 32) , None)
         if proc_info == None:
@@ -1306,18 +1306,18 @@ class TraceV3():
 
     def Parse(self, log_list_process_func=None):
         '''Parse the traceV3 file, returns True/False.
-           'log_list_process_func' is a function the caller provides to 
+           'log_list_process_func' is a function the caller provides to
            process a list of logs. It gets called periodically as logs are extracted.
            Its syntax is log_list_process_func(logs_list, tracev3_object)
            Here log_list = [ log_1, log_2, .. ], where each log_x item is a tuple
-           log_x = ( log_file_pos, continuous_time, time, thread, log_type, 
-                    activity_id, parent_activity_id, 
+           log_x = ( log_file_pos, continuous_time, time, thread, log_type,
+                    activity_id, parent_activity_id,
                     pid, euid, ttl, p_name, lib, sub_system, category,
-                    signpost_name, signpost_string, 
-                    image_offset, image_UUID, process_image_UUID, 
+                    signpost_name, signpost_string,
+                    image_offset, image_UUID, process_image_UUID,
                     sender_image_path, process_image_path,
                     log_msg
-                   ) 
+                   )
         '''
         log.debug("-"*100 + "\r\nParsing traceV3 file {}".format(self.file.filename))
         f = self.file.open()
@@ -1333,10 +1333,10 @@ class TraceV3():
             if subtag != 0x11:
                 log.error('Cannot process this version of unified logging, version=0x{:X}'.format(subtag))
                 return False
-            
+
             buffer = f.read(data_length) # fileheader_data + items
             self.ParseFileHeader(buffer, data_length)
-            
+
             pos = 16 + data_length
             catalog = None
             meta_chunk_index = 0
@@ -1376,9 +1376,9 @@ class TraceV3():
         except:
             log.exception('traceV3 Parser error')
         return True
-        
+
 class CachedFiles():
-    ''' 
+    '''
         Optimization measure to parse and hold open file pointers for uuidtext/dsc files,
         so they are not parsed again and again
     '''
@@ -1394,7 +1394,7 @@ class CachedFiles():
             dsc_path = self.vfs.path_join(uuidtext_folder_path, 'dsc')
             entries = self.vfs.listdir(dsc_path)
             for dsc_name in entries:
-                if len(dsc_name) == 32:                    
+                if len(dsc_name) == 32:
                     dsc = Dsc(self.vfs.get_virtual_file(self.vfs.path_join(dsc_path, dsc_name), 'Dsc'))
                     dsc.Parse()
                     self.cached_dsc[dsc_name] = dsc
@@ -1574,7 +1574,7 @@ class Dsc():
 
 def GetBootUuidTimeSyncList(ts_list, uuid):
     '''
-        Searches ts_list for the boot uuid provided and returns the 
+        Searches ts_list for the boot uuid provided and returns the
         timesync items list for that uuid
     '''
     for ts in ts_list:
@@ -1672,9 +1672,9 @@ def ReadTimesyncFile(buffer, ts_list):
                 pos += 32
     except Exception as ex:
         log.exception("Exception reading TimesyncFile")
-    
+
 def ReadTimesyncFolder(path, ts_list, vfs):
-    '''Reads files in the timesync folder specified by 'path' and populates ts_list 
+    '''Reads files in the timesync folder specified by 'path' and populates ts_list
        with timesync entries.
        vfs = VirtualFileSystem object
     '''

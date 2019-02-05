@@ -67,6 +67,7 @@ class VirtualFile(object):
         functions to implement accessing files or other data stores.
     '''
     def __init__(self, path, filetype=''):
+        super(VirtualFile, self).__init__()
         self.path = path
         self.filename = os.path.basename(path)
         self.file_type = filetype
@@ -111,6 +112,7 @@ class VirtualFileSystem(object):
         class and override its methods.
     '''
     def __init__(self, virtual_file_class):
+        super(VirtualFileSystem, self).__init__()
         self.virtual_file_class = virtual_file_class
     
     def path_exists(self, path):
@@ -307,17 +309,19 @@ def DecompressChunkData(chunk_data, data_len):
         log.error('Unknown compression type {}'.format(binascii.hexlify(chunk_data[16:20])))
     return uncompressed
 
-class ExtraFileReference:
+class ExtraFileReference(object):
     '''Extra file reference object. Some ProcInfos have messages in more than one uuidtext file'''
     def __init__(self, data_size, uuid_file_index, u2, v_offset, id):
+        super(ExtraFileReference, self).__init__()
         self.data_size = data_size # data size
         self.uuid_file_index = uuid_file_index
         self.unknown2 = u2
         self.v_offset = v_offset # virtual offset
         self.id = id
 
-class ProcInfo:
+class ProcInfo(object):
     def __init__(self, id, flags, uuid_file_index, dsc_file_index, proc_id1, proc_id2, pid, euid, u6, num_extra_uuid_refs, u8, num_subsys_cat_elements, u9, extra_file_refs):
+        super(ProcInfo, self).__init__()
         self.id = id
         self.flags = flags
         self.uuid_file_index = uuid_file_index
@@ -343,8 +347,9 @@ class ProcInfo:
         log.error("Could not find subsystem_category_id={}".format(sc_id))
         return ('','')
 
-class ChunkMeta:
+class ChunkMeta(object):
     def __init__(self, continuous_time_first, continuous_time_last,chunk_len, compression_alg):
+        super(ChunkMeta, self).__init__()
         self.continuous_time_first = continuous_time_first
         self.continuous_time_last = continuous_time_last
         self.length_of_chunk = chunk_len # Chunk to follow
@@ -354,8 +359,9 @@ class ChunkMeta:
         self.ProcInfos = {}   # key = pid
         self.Strings = {} # key = string offset
 
-class Catalog:
+class Catalog(object):
     def __init__(self):
+        super(Catalog, self).__init__()
         self.ContinuousTime = 0
         self.FileObjects = []
         self.Strings = ''
@@ -370,7 +376,7 @@ class Catalog:
         log.error("ProcInfo with id={} not found".format(id))
         return None
 
-class TraceV3():
+class TraceV3(object):
     def __init__(self, v_fs, v_file, ts_list, uuidtext_folder_path, cached_files=None):
         '''
             Input params:
@@ -380,6 +386,7 @@ class TraceV3():
             uuidtext_folder_path = Path to folder containing Uuidtext folders (and files)
             cached_files = CachedFiles object for dsc & uuidtext files (can be None)
         '''
+        super(TraceV3, self).__init__()
         self.vfs = v_fs
         self.file = v_file
         # Header info
@@ -1377,13 +1384,14 @@ class TraceV3():
         except:
             log.exception('traceV3 Parser error')
         return True
-        
-class CachedFiles():
-    ''' 
+
+class CachedFiles(object):
+    '''
         Optimization measure to parse and hold open file pointers for uuidtext/dsc files,
         so they are not parsed again and again
     '''
     def __init__(self, v_fs):
+        super(CachedFiles, self).__init__()
         self.vfs = v_fs
         self.cached_dsc = {}      # Key = UUID string uppercase (no seperators), Val = Dsc object
         self.cached_uuidtext = {} # Key = UUID string uppercase (no seperators), Val = Uuidtext object
@@ -1421,8 +1429,9 @@ class CachedFiles():
             log.exception('')
 
 
-class Uuidtext():
+class Uuidtext(object):
     def __init__(self, v_file, uuid):
+        super(Uuidtext, self).__init__()
         self.file = v_file
         self.flag1 = 0
         self.flag2 = 0
@@ -1477,8 +1486,9 @@ class Uuidtext():
             self.file.is_valid = False
         return True
 
-class Dsc():
+class Dsc(object):
     def __init__(self, v_file):
+        super(Dsc, self).__init__()
         self.file = v_file
         self.version = 0
         self.num_range_entries = 0
@@ -1606,15 +1616,17 @@ def FindClosestTimesyncItemInList(ts_items, continuousTime):
             closest_tsi = item
     return closest_tsi
 
-class Timesync:
+class Timesync(object):
     def __init__(self, header):
+        super(Timesync, self).__init__()
         self.header = header
         self.items = []
         #self.items_dict = {} # unused , use later for optimization
 
-class TimesyncHeader:
+class TimesyncHeader(object):
 
     def __init__(self, sig, unk1, boot_uuid, ts_numer, ts_denom, ts, bias, is_dst):
+        super(TimesyncHeader, self).__init__()
         self.signature = sig
         self.unknown1  = unk1
         self.boot_uuid = boot_uuid
@@ -1624,9 +1636,10 @@ class TimesyncHeader:
         self.bias_minutes   = bias
         self.is_dst = (is_dst == 1) # 1 = DST
 
-class TimesyncItem:
+class TimesyncItem(object):
     '''Timesync item object'''
     def __init__(self, ts_unknown, cont_time, ts, bias, is_dst):
+        super(TimesyncItem, self).__init__()
         #self.signature = sig # "Ts  " = sig?
         self.ts_unknown = ts_unknown
         self.continuousTime = cont_time

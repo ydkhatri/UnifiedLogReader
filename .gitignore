@@ -24,3 +24,7 @@
 # Test coverage files
 .coverage
 tests-coverage.txt
+
+# vs-code settings files
+launch.json
+settings.json

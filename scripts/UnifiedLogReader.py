@@ -37,15 +37,19 @@
 
 from __future__ import print_function
 #from __future__ import unicode_literals
+
+import abc
 import argparse
 import codecs
 import logging
+import io
 import os
 import sqlite3
 import sys
 import time
 
-from UnifiedLog import __version__
+import UnifiedLog
+
 from UnifiedLog import Lib as UnifiedLogLib
 from UnifiedLog import logger
 from UnifiedLog import tracev3_file
@@ -53,10 +57,309 @@ from UnifiedLog import virtual_file
 from UnifiedLog import virtual_file_system
 
 
-f = None
-vfs = virtual_file_system.VirtualFileSystem(virtual_file.VirtualFile)
-total_logs_processed = 0
-db_conn = None
+class OutputWriter(object):
+    '''Output writer interface.'''
+
+    @abc.abstractmethod
+    def Close(self):
+        '''Closes the output writer.'''
+
+    @abc.abstractmethod
+    def Open(self):
+        '''Opens the output writer.
+
+        Returns:
+          bool: True if successful or False on error.
+        '''
+
+    @abc.abstractmethod
+    def WriteLogEntry(self, log):
+        '''Writes a Unified Log entry.
+
+        Args:
+          log (???): log entry:
+        '''
+
+
+class SQLiteDatabaseOutputWriter(object):
+    '''Output writer that writes output to a SQLite database.'''
+
+    _CREATE_LOGS_TABLE_QUERY = (
+        'CREATE TABLE logs (SourceFile TEXT, SourceFilePos INTEGER, '
+        'ContinuousTime TEXT, TimeUtc TEXT, Thread INTEGER, Type TEXT, '
+        'ActivityID INTEGER, ParentActivityID INTEGER, ProcessID INTEGER, '
+        'EffectiveUID INTEGER, TTL INTEGER, ProcessName TEXT, '
+        'SenderName TEXT, Subsystem TEXT, Category TEXT, SignpostName TEXT, '
+        'SignpostInfo TEXT, ImageOffset INTEGER, SenderUUID TEXT, '
+        'ProcessImageUUID TEXT, SenderImagePath TEXT, ProcessImagePath TEXT, '
+        'Message TEXT)')
+
+    _INSERT_LOGS_VALUES_QUERY = (
+        'INSERT INTO logs VALUES '
+        '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+
+    def __init__(self, path):
+        '''Initializes a SQLite database output writer.
+
+        Args:
+          path (str): path of the SQLite database file.
+        '''
+        super(UnifiedLogReader, self).__init__()
+        self._connection = None
+        self._path = path
+
+    def Close(self):
+        '''Closes the unified logs reader.'''
+        if self._connection:
+            try:
+                self._connection.close()
+
+            except sqlite3.Error:
+                logger.exception('Unable to close database')
+
+            self._connection = None
+
+        self._path = None
+
+    def Open(self):
+        '''Opens the output writer.'''
+        if os.path.exists(self._path):
+            try:
+                logger.info('Database already exists, trying to delete it.')
+                os.remove(self._path)
+
+            except (IOError, OSError):
+                logger.exception(
+                    'Unable to remove existing database at %s.', self._path)
+                return False
+
+        try:
+            logger.info('Trying to create new database file at %s.', self._path)
+            self._connection = sqlite3.connect(self._path)
+
+            cursor = self._connection.cursor()
+            cursor.execute(self._CREATE_LOGS_TABLE_QUERY)
+
+        except sqlite3.Error:
+            logger.exception('Failed to create database at %s', self._path)
+            return False
+
+        return True
+
+    def WriteLogEntry(self, log):
+        '''Writes a Unified Log entry.
+
+        Args:
+          log (???): log entry:
+        '''
+        if self._connection:
+            log[3] = UnifiedLogLib.ReadAPFSTime(log[3])
+            log[18] = '{0!s}'.format(log[18])
+            log[19] = '{0!s}'.format(log[19])
+
+            # TODO: cache queries to use executemany
+            try:
+                cursor = self._connection.cursor()
+                cursor.execute(self._INSERT_LOGS_VALUES_QUERY, log)
+
+            except sqlite3.Error:
+                logger.exception('Error inserting data into database')
+
+
+class TSVFileOutputWriter(object):
+    '''Output writer that writes output to a TSV file.'''
+
+    _HEADER_ALL = u'\t'.join([
+        'SourceFile', 'LogFilePos', 'ContinousTime', 'Time', 'ThreadId',
+        'LogType', 'ActivityId', 'ParentActivityId', 'PID', 'EUID', 'TTL',
+        'ProcessName', 'SenderName', 'Subsystem', 'Category', 'SignpostName',
+        'SignpostString', 'ImageOffset', 'ImageUUID', 'ProcessImageUUID',
+        'SenderImagePath', 'ProcessImagePath', 'LogMessage'])
+
+    # Note that this technically is not tab-separated values format.
+    _HEADER_DEFAULT = (
+        u'Timestamp                  Thread     Type        '
+        u'Activity             PID    TTL  Message')
+
+    def __init__(self, path, mode='DEFAULT'):
+        '''Initializes a TSV file output writer.
+
+        Args:
+          path (str): path of the TSV file.
+          mode (Optional[str]): output mode, which can be DEFAULT or ALL.
+
+        Raises:
+          ValueError: if mode is unsupported.
+        '''
+        if mode not in ('ALL', 'DEFAULT'):
+            raise ValueError('Unsupported mode')
+
+        super(UnifiedLogReader, self).__init__()
+        self._file_object = None
+        self._mode = mode
+        self._path = path
+
+    def Close(self):
+        '''Closes the unified logs reader.'''
+        if self._file_object:
+            self._file_object.close()
+            self._file_object = None
+
+        self._path = None
+
+    def Open(self):
+        '''Opens the output writer.
+
+        Returns:
+          bool: True if successful or False on error.
+        '''
+        logger.info('Creating output file %s', self._path)
+
+        # io.open() is portable between Python 2 and 3
+        # using text mode so we don't have to care about end-of-line character
+        self._file_object = io.open(self._path, 'wt', encoding='utf-8')
+        if self._mode == 'ALL':
+            self._file_object.write(self._HEADER_ALL)
+        else:
+            self._file_object.write(self._HEADER_DEFAULT)
+
+    def WriteLogEntry(self, log):
+        '''Writes a Unified Log entry.
+
+        Args:
+          log (???): log entry:
+        '''
+        if self._file_object:
+            log[3] = UnifiedLogLib.ReadAPFSTime(log[3])
+
+            try:
+                if self._mode == 'ALL':
+                    log[18] = u'{0!s}'.format(log[18]).upper()
+                    log[19] = u'{0!s}'.format(log[19]).upper()
+
+                    self._file_object.write((
+                        u'{}\t0x{:X}\t{}\t{}\t0x{:X}\t{}\t0x{:X}\t0x{:X}\t{}\t'
+                        u'{}\t{}\t({})\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t'
+                        u'{}').format(
+                            log[0], log[1], log[2], log[3], log[4], log[5],
+                            log[6], log[7], log[8], log[9], log[10], log[11],
+                            log[12], log[13], log[14], log[15], log[16],
+                            log[17], log[18], log[19], log[20], log[21],
+                            log[22]))
+
+                else:
+                    signpost = ''  # (log[15] + ':') if log[15] else ''
+                    if log[15]:
+                        signpost += '[' + log[16] + ']'
+                    msg = (signpost + ' ') if signpost else ''
+                    msg += log[11] + ' ' + (( '(' + log[12] + ') ') if log[12] else '')
+                    if len(log[13]) or len (log[14]):
+                        msg += '[' + log[13] + ':' + log[14] + '] '
+                    msg += log[22]
+
+                    self._file_object.write((
+                        u'{time:26} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} '
+                        u'{li[8]:<6} {li[10]:<4} {message}').format(
+                            li=log, time=log[3], message=msg))
+
+            except (IOError, OSError):
+                logger.exception('Error writing to output file')
+
+
+class UnifiedLogReader(object):
+    '''Unified log reader.'''
+
+    def __init__(self):
+        '''Initializes an unified log reader.'''
+        super(UnifiedLogReader, self).__init__()
+        self._caches = None
+        self._ts_list = []
+        self._uuidtext_folder_path = None
+        self._vfs = virtual_file_system.VirtualFileSystem(
+            virtual_file.VirtualFile)
+        self.total_logs_processed = 0
+
+    # TODO: remove log_list_process_func callback from TraceV3.Parse() 
+    def _ProcessLogsList(self, logs, tracev3):
+        for log_entry in trace_file.Parse():
+            self._output_writer.WriteLogEntry(log_entry)
+            self.total_logs_processed += 1
+
+    def _ReadTraceV3File(self, tracev3_path, output_writer):
+        '''Reads a tracev3 file.
+
+        Args:
+          tracev3_path (str): path of the tracev3 file.
+          output_writer (OutputWriter): output writer.
+
+        Returns:
+          TraceV3: tracev3 file.
+        '''
+        file_object = virtual_file.VirtualFile(path, 'traceV3')
+        trace_file = tracev3_file.TraceV3(
+            self._vfs, file_object, self._ts_list, self._uuidtext_folder_path,
+            self._caches)
+
+        # TODO: remove log_list_process_func callback from TraceV3.Parse() 
+        self._output_writer = output_writer
+        trace_file.Parse(log_list_process_func=self._ProcessLogsList)
+
+    def _ReadTraceV3Folder(self, tracev3_path):
+        '''Reads all the tracev3 files in the folder.
+
+        Args:
+          tracev3_path (str): path of the tracev3 folder.
+          output_writer (OutputWriter): output writer.
+        '''
+        for directory_entry in os.listdir(tracev3_path):
+            directory_entry_path = os.path.join(tracev3_path, directory_entry)
+            if os.path.isdir(directory_entry_path):
+                self._ReadTraceV3Folder(directory_entry_path, output_writer)
+
+            elif (directory_entry.lower().endswith('.tracev3') and
+                  not directory_entry.startswith('._')):
+                logger.info("Trying to read file - %s", directory_entry_path)
+                self._ReadTraceV3File(directory_entry_path, output_writer)
+
+    def ReadDscFiles(self, uuidtext_folder_path):
+        '''Reads the dsc files.
+
+        Args:
+          uuidtext_folder_path (str): path of the uuidtext folder.
+        '''
+        self._caches = UnifiedLogLib.CachedFiles(self._vfs)
+        self._uuidtext_folder_path = uuidtext_folder_path
+
+        self._caches.ParseFolder(self._uuidtext_folder_path)
+
+    def ReadTimesyncFolder(self, timesync_folder_path):
+        '''Reads the timesync folder.
+
+        Args:
+          timesync_folder_path (str): path of the timesync folder.
+
+        Returns:
+          bool: True if successful or False otherwise.
+        '''
+        self._ts_list = []
+
+        UnifiedLogLib.ReadTimesyncFolder(
+            timesync_folder_path, self._ts_list, self._vfs)
+
+        return bool(self._ts_list)
+
+    def ReadTraceV3Files(self, tracev3_path, output_writer):
+        '''Reads the tracev3 files.
+
+        Args:
+          tracev3_path (str): path of the tracev3 file or folder.
+          output_writer (OutputWriter): output writer.
+        '''
+        if os.path.isdir(tracev3_path):
+            self._ReadTraceV3Folder(tracev3_path, output_writer)
+        else:
+            self._ReadTraceV3File(tracev3_path, output_writer)
+
 
 def DecompressTraceV3Log(input_path, output_path):
     try:
@@ -66,151 +369,33 @@ def DecompressTraceV3Log(input_path, output_path):
     except:
         logger.exception('')
 
-def InitializeDatabase(path):
-    global db_conn
-    try:
-        if os.path.exists(path):
-            logger.info('Database file already exists, trying to delete it')
-            os.remove(path)
-        logger.info('Trying to create new database file at ' + path)
-        db_conn = sqlite3.connect(path)
-        return True
-    except:
-        logger.exception('Failed to create database at ' + path)
-    return False
 
-def CreateTable(conn):
-    try:
-        create_statement = 'CREATE TABLE logs ('\
-                    'SourceFile TEXT, SourceFilePos INTEGER, ContinuousTime TEXT, TimeUtc TEXT, Thread INTEGER, Type TEXT, '\
-                    'ActivityID INTEGER, ParentActivityID INTEGER, ProcessID INTEGER, EffectiveUID INTEGER, TTL INTEGER, '\
-                    'ProcessName TEXT, SenderName TEXT, Subsystem TEXT, Category TEXT, SignpostName TEXT, SignpostInfo TEXT, '\
-                    'ImageOffset INTEGER, SenderUUID TEXT, ProcessImageUUID TEXT, SenderImagePath TEXT, '\
-                    'ProcessImagePath TEXT, Message TEXT'\
-                    ')'
-        cursor = conn.cursor()
-        cursor.execute(create_statement)
-        return True
-    except:
-        logger.exception('Exception while creating Table in database')
-    return False
+def Main():
+    '''The main program function.
 
-def CloseDB():
-    try:
-        if db_conn:
-            db_conn.close()
-    except:
-        pass
-
-def ProcessLogsList_Sqlite(logs, tracev3):
-    global db_conn
-    global total_logs_processed
-
-    if db_conn == None:
-        return
-    cursor = db_conn.cursor()
-    query = 'INSERT INTO logs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
-    try:
-        for li in logs:
-            li[3] = UnifiedLogLib.ReadAPFSTime(li[3])
-            li[18] = unicode(li[18])
-            li[19] = unicode(li[19])
-        cursor.executemany(query, logs)
-        db_conn.commit()
-        cursor.close()
-        total_logs_processed += len(logs)
-    except:
-        logger.exception('Error inserting data into database')
-
-def ProcessLogsList_All(logs, tracev3):
+    Returns:
+      bool: True if successful or False if not.
     '''
-    Function to process a list of log items.
-    logs format = [ source_file, log_file_pos,
-                    continuous_time, time, thread, log_type,
-                    activity_id, parent_activity_id,
-                    pid, euid, ttl, p_name, lib, sub_system, category,
-                    signpost_name, signpost_string,
-                    image_offset, image_UUID, process_image_UUID,
-                    sender_image_path, process_image_path,
-                    log_msg
-                  ]
-    '''
-    global f
-    global total_logs_processed
-    for li in logs:
-        try:
-            f.write(u'{}\t0x{:X}\t'\
-                '{}\t{}\t0x{:X}\t{}\t'\
-                '0x{:X}\t0x{:X}\t'\
-                '{}\t{}\t{}\t({})\t{}\t{}\t'\
-                '{}\t{}\t'\
-                '{}\t{}\t{}\t'\
-                '{}\t{}\t'\
-                '{}'\
-                '\r\n'.format(\
-                li[0],li[1],
-                li[2],UnifiedLogLib.ReadAPFSTime(li[3]),li[4],li[5],
-                li[6],li[7],
-                li[8],li[9],li[10],li[11],li[12],li[13],li[14],
-                li[15],li[16],
-                li[17],unicode(li[18]).upper(),unicode(li[19]).upper(),
-                li[20],li[21],
-                li[22]))
-            total_logs_processed += 1
-        except:
-            logger.exception('Error writing to output file')
+    description = (
+        'UnifiedLogReader is a tool to read macOS Unified Logging tracev3 files.\n'
+        'This is version {0:s} tested on macOS 10.12.5 - 10.14.3.\n\n'
+        'Notes:\n-----\n'
+        'If you have a .logarchive, then point uuidtext_path to the .logarchive folder, \n'
+        'the timesync folder is within the logarchive folder').format(UnifiedLog.__version__)
 
-def ProcessLogsList_DefaultFormat(logs, tracev3):
-    global f
-    global total_logs_processed
-    for li in logs:
-        try:
-            signpost = '' #(li[15] + ':') if li[15] else ''
-            if li[15]:
-                signpost += '[' + li[16] + ']'
-            msg = (signpost + ' ') if signpost else ''
-            msg += li[11] + ' ' + (( '(' + li[12] + ') ') if li[12] else '')
-            if len(li[13]) or len (li[14]):
-                msg += '[' + li[13] + ':' + li[14] + '] '
-            msg += li[22]
-            f.write(u'{time:26} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} {li[8]:<6} {li[10]:<4} {message}\r\n'.format(li=li, time=str(UnifiedLogLib.ReadAPFSTime(li[3])), message=msg))
-            total_logs_processed += 1
-        except:
-            logger.exception('Error writing to output file')
-
-def RecurseProcessLogFiles(input_path, ts_list, uuidtext_folder_path, caches, proc_func):
-    '''Recurse the folder located by input_path and process all .traceV3 files'''
-    global vfs
-    files = os.listdir(input_path)
-
-    for file_name in files:
-        input_file_path = os.path.join(input_path, file_name)
-        if file_name.lower().endswith('.tracev3') and not file_name.startswith('._'):
-            logger.info("Trying to read file - " + input_file_path)
-            file_object = virtual_file.VirtualFile(input_file_path, 'traceV3')
-            trace_file = tracev3_file.TraceV3(vfs, file_object, ts_list, uuidtext_folder_path, caches)
-            trace_file.Parse(proc_func)
-        elif os.path.isdir(input_file_path):
-            RecurseProcessLogFiles(input_file_path, ts_list, uuidtext_folder_path, caches, proc_func)
-
-def main():
-    global f
-    global vfs
-    global total_logs_processed
-    global db_conn
-    recurse = False
-
-    arg_parser = argparse.ArgumentParser(description='UnifiedLogReader is a tool to read macOS Unified Logging tracev3 files.\r\n'\
-                                            'This is version ' + __version__ + ' tested on macOS 10.12.5 - 10.14.3.\n\nNotes:\n-----\n'\
-                                            'If you have a .logarchive, then point uuidtext_path to the .logarchive folder,\n'\
-                                            ' the timesync folder is within the logarchive folder',
-                                            formatter_class=argparse.RawTextHelpFormatter)
+    arg_parser = argparse.ArgumentParser(
+        description=description, formatter_class=argparse.RawTextHelpFormatter)
     arg_parser.add_argument('uuidtext_path', help='Path to uuidtext folder (/var/db/uuidtext)')
     arg_parser.add_argument('timesync_path', help='Path to timesync folder (/var/db/diagnostics/timesync)')
     arg_parser.add_argument('tracev3_path', help='Path to either tracev3 file or folder to recurse (/var/db/diagnostics)')
     arg_parser.add_argument('output_path', help='An existing folder where output will be saved')
 
-    arg_parser.add_argument('-f', '--output_format', help='SQLITE, TSV_ALL, TSV_DEFAULT  (Default is TSV_DEFAULT)')
+    arg_parser.add_argument(
+         '-f', '--output_format', action='store', choices=(
+             'SQLITE', 'TSV_ALL', 'TSV_DEFAULT'),
+         metavar='FORMAT', default='TSV_DEFAULT', help=(
+             'Output format: SQLITE, TSV_ALL, TSV_DEFAULT  (Default is TSV_DEFAULT)'))
+
     arg_parser.add_argument('-l', '--log_level', help='Log levels: INFO, DEBUG, WARNING, ERROR (Default is INFO)')
 
     args = arg_parser.parse_args()
@@ -219,30 +404,22 @@ def main():
     uuidtext_folder_path = args.uuidtext_path.rstrip('\\/')
     timesync_folder_path = args.timesync_path.rstrip('\\/')
     tracev3_path = args.tracev3_path.rstrip('\\/')
-    if os.path.isdir(tracev3_path):
-        recurse = True
 
     if not os.path.exists(uuidtext_folder_path):
         print('Exiting..UUIDTEXT Path not found {}'.format(uuidtext_folder_path))
         return
+
     if not os.path.exists(timesync_folder_path):
         print('Exiting..TIMESYNC Path not found {}'.format(timesync_folder_path))
         return
+
     if not os.path.exists(tracev3_path):
         print('Exiting..traceV3 Path not found {}'.format(tracev3_path))
         return
+
     if not os.path.exists(output_path):
         print ('Creating output folder {}'.format(output_path))
         os.makedirs(output_path)
-
-    # output format
-    if args.output_format:
-        args.output_format = args.output_format.upper()
-        if not args.output_format in ['SQLITE','TSV_DEFAULT','TSV_ALL']:
-            print("Invalid input type for output format. Valid values are SQLITE, TSV_ALL, TSV_DEFAULT")
-            return
-    else:
-        args.output_format = 'TSV_DEFAULT'
 
     log_file_path = os.path.join(output_path, "Log." + unicode(time.strftime("%Y%m%d-%H%M%S")) + ".txt")
 
@@ -274,60 +451,44 @@ def main():
     logger.addHandler(log_file_handler)
     logger.setLevel(log_level)
 
-    ts_list = []
-    UnifiedLogLib.ReadTimesyncFolder(timesync_folder_path, ts_list, vfs)
-    if ts_list:
-        try:
-            if args.output_format == 'SQLITE':
-                if InitializeDatabase(os.path.join(output_path, 'unifiedlogs.sqlite')) and CreateTable(db_conn):
-                    proc_func = ProcessLogsList_Sqlite
-                else:
-                    return
-            else:
-                logger.info('Creating output file {}'.format(os.path.join(output_path, 'logs.txt')))
-                f = codecs.open(os.path.join(output_path, 'logs.txt'), 'wb', 'utf-8')
-                if args.output_format == 'TSV_ALL':
-                    f.write('SourceFile\tLogFilePos\tContinousTime\tTime\tThreadId\tLogType\tActivityId\tParentActivityId\t' +
-                            'PID\tEUID\tTTL\tProcessName\tSenderName\tSubsystem\tCategory\t' +
-                            'SignpostName\tSignpostString\t' +
-                            'ImageOffset\tImageUUID\tProcessImageUUID\t' +
-                            'SenderImagePath\tProcessImagePath\t' +
-                            'LogMessage\r\n')
-                    proc_func = ProcessLogsList_All
-                else: # 'TSV_DEFAULT'
-                    default_format_header = 'Timestamp                  Thread     Type        Activity             PID    TTL  Message\r\n'
-                    f.write(default_format_header)
-                    proc_func = ProcessLogsList_DefaultFormat
-        except:
-            logger.exception("Failed to open file for writing")
-            return
+    unified_log_reader = UnifiedLogReader()
 
-        time_processing_started = time.time()
-        logger.info('Started processing')
-
-        #Read dsc files into cache
-        caches = UnifiedLogLib.CachedFiles(vfs)
-        caches.ParseFolder(uuidtext_folder_path)
-
-        #Read .traceV3 files
-        if recurse:
-            RecurseProcessLogFiles(tracev3_path, ts_list, uuidtext_folder_path, caches, proc_func)
-        else:
-            file_object = virtual_file.VirtualFile(input_file_path, 'traceV3')
-            trace_file = tracev3_file.TraceV3(vfs, file_object, ts_list, uuidtext_folder_path, caches)
-            trace_file.Parse(proc_func)
-        if f:
-            f.close()
-        if db_conn:
-            CloseDB()
-
-        time_processing_ended = time.time()
-        run_time = time_processing_ended - time_processing_started
-        logger.info("Finished in time = {}".format(time.strftime('%H:%M:%S', time.gmtime(run_time))))
-        logger.info("{} Logs processed".format(total_logs_processed))
-        logger.info("Review the Log file and report any ERRORs or EXCEPTIONS to the developers")
-    else:
+    if not unified_log_reader.ReadTimesyncFolder():
         logger.error('Failed to get any timesync entries')
+        return False
+
+    if args.output_format == 'SQLITE':
+        database_path = os.path.join(output_path, 'unifiedlogs.sqlite')
+        output_writer = SQLiteDatabaseOutputWriter(database_path)
+
+    elif args.output_format.startswith('TSV_'):
+        file_path = os.path.join(output_path, 'logs.txt')
+        output_writer = TSVFileOutputWriter(
+            file_path, mode=args.output_format[4:])
+
+    if not output_writer.Open():
+        logger.exception("Failed to open output for writing")
+        return
+
+    time_processing_started = time.time()
+    logger.info('Started processing')
+
+    unified_log_reader.ReadDscFiles(uuidtext_folder_path)
+    unified_log_reader.ReadTraceV3Files(tracev3_path, output_writer)
+
+    output_writer.Close()
+
+    time_processing_ended = time.time()
+    run_time = time_processing_ended - time_processing_started
+    logger.info("Finished in time = {}".format(time.strftime('%H:%M:%S', time.gmtime(run_time))))
+    logger.info("{} Logs processed".format(unified_log_reader.total_logs_processed))
+    logger.info("Review the Log file and report any ERRORs or EXCEPTIONS to the developers")
+
+    return True
+
 
 if __name__ == "__main__":
-    main()
+    if not Main():
+        sys.exit(1)
+    else:
+        sys.exit(0)

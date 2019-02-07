@@ -45,13 +45,10 @@ import sqlite3
 import sys
 import time
 
-from UnifiedLog import Lib as UnifiedLogLib
 from UnifiedLog import __version__
+from UnifiedLog import Lib as UnifiedLogLib
+from UnifiedLog import logger
 
-
-log = logging.getLogger('UNIFIED_LOG_READER')
-UnifiedLogLib.log = log
-######
 
 f = None
 vfs = UnifiedLogLib.VirtualFileSystem(UnifiedLogLib.VirtualFile)
@@ -64,19 +61,19 @@ def DecompressTraceV3Log(input_path, output_path):
             with open(output_path, 'wb') as out_file:
                 return UnifiedLogLib.DecompressTraceV3(trace_file, out_file)
     except:
-        log.exception('')
+        logger.exception('')
 
 def InitializeDatabase(path):
     global db_conn
     try:
         if os.path.exists(path):
-            log.info('Database file already exists, trying to delete it')
+            logger.info('Database file already exists, trying to delete it')
             os.remove(path)
-        log.info('Trying to create new database file at ' + path)
+        logger.info('Trying to create new database file at ' + path)
         db_conn = sqlite3.connect(path)
         return True
     except:
-        log.exception('Failed to create database at ' + path)
+        logger.exception('Failed to create database at ' + path)
     return False
 
 def CreateTable(conn):
@@ -92,7 +89,7 @@ def CreateTable(conn):
         cursor.execute(create_statement)
         return True
     except:
-        log.exception('Exception while creating Table in database')
+        logger.exception('Exception while creating Table in database')
     return False
 
 def CloseDB():
@@ -120,7 +117,7 @@ def ProcessLogsList_Sqlite(logs, tracev3):
         cursor.close()
         total_logs_processed += len(logs)
     except:
-        log.exception('Error inserting data into database')
+        logger.exception('Error inserting data into database')
 
 def ProcessLogsList_All(logs, tracev3):
     '''
@@ -158,7 +155,7 @@ def ProcessLogsList_All(logs, tracev3):
                 li[22]))
             total_logs_processed += 1
         except:
-            log.exception('Error writing to output file')
+            logger.exception('Error writing to output file')
 
 def ProcessLogsList_DefaultFormat(logs, tracev3):
     global f
@@ -176,7 +173,7 @@ def ProcessLogsList_DefaultFormat(logs, tracev3):
             f.write(u'{time:26} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} {li[8]:<6} {li[10]:<4} {message}\r\n'.format(li=li, time=str(UnifiedLogLib.ReadAPFSTime(li[3])), message=msg))
             total_logs_processed += 1
         except:
-            log.exception('Error writing to output file')
+            logger.exception('Error writing to output file')
 
 def RecurseProcessLogFiles(input_path, ts_list, uuidtext_folder_path, caches, proc_func):
     '''Recurse the folder located by input_path and process all .traceV3 files'''
@@ -186,7 +183,7 @@ def RecurseProcessLogFiles(input_path, ts_list, uuidtext_folder_path, caches, pr
     for file_name in files:
         input_file_path = os.path.join(input_path, file_name)
         if file_name.lower().endswith('.tracev3') and not file_name.startswith('._'):
-            log.info("Trying to read file - " + input_file_path)
+            logger.info("Trying to read file - " + input_file_path)
             UnifiedLogLib.TraceV3(vfs, UnifiedLogLib.VirtualFile(input_file_path, 'traceV3'), ts_list, uuidtext_folder_path, caches).Parse(proc_func)
         elif os.path.isdir(input_file_path):
             RecurseProcessLogFiles(input_file_path, ts_list, uuidtext_folder_path, caches, proc_func)
@@ -264,13 +261,13 @@ def main():
     log_console_handler.setLevel(log_level)
     log_console_format  = logging.Formatter('%(levelname)s - %(message)s')
     log_console_handler.setFormatter(log_console_format)
-    log.addHandler(log_console_handler)
+    logger.addHandler(log_console_handler)
 
     #log file
     log_file_handler = logging.FileHandler(log_file_path)
     log_file_handler.setFormatter(log_console_format)
-    log.addHandler(log_file_handler)
-    log.setLevel(log_level)
+    logger.addHandler(log_file_handler)
+    logger.setLevel(log_level)
 
     ts_list = []
     UnifiedLogLib.ReadTimesyncFolder(timesync_folder_path, ts_list, vfs)
@@ -282,7 +279,7 @@ def main():
                 else:
                     return
             else:
-                log.info('Creating output file {}'.format(os.path.join(output_path, 'logs.txt')))
+                logger.info('Creating output file {}'.format(os.path.join(output_path, 'logs.txt')))
                 f = codecs.open(os.path.join(output_path, 'logs.txt'), 'wb', 'utf-8')
                 if args.output_format == 'TSV_ALL':
                     f.write('SourceFile\tLogFilePos\tContinousTime\tTime\tThreadId\tLogType\tActivityId\tParentActivityId\t' +
@@ -297,11 +294,11 @@ def main():
                     f.write(default_format_header)
                     proc_func = ProcessLogsList_DefaultFormat
         except:
-            log.exception("Failed to open file for writing")
+            logger.exception("Failed to open file for writing")
             return
 
         time_processing_started = time.time()
-        log.info('Started processing')
+        logger.info('Started processing')
 
         #Read dsc files into cache
         caches = UnifiedLogLib.CachedFiles(vfs)
@@ -319,11 +316,11 @@ def main():
 
         time_processing_ended = time.time()
         run_time = time_processing_ended - time_processing_started
-        log.info("Finished in time = {}".format(time.strftime('%H:%M:%S', time.gmtime(run_time))))
-        log.info("{} Logs processed".format(total_logs_processed))
-        log.info("Review the Log file and report any ERRORs or EXCEPTIONS to the developers")
+        logger.info("Finished in time = {}".format(time.strftime('%H:%M:%S', time.gmtime(run_time))))
+        logger.info("{} Logs processed".format(total_logs_processed))
+        logger.info("Review the Log file and report any ERRORs or EXCEPTIONS to the developers")
     else:
-        log.error('Failed to get any timesync entries')
+        logger.error('Failed to get any timesync entries')
 
 if __name__ == "__main__":
     main()

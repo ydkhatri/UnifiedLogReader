@@ -39,7 +39,6 @@ from __future__ import unicode_literals
 import binascii
 import datetime
 import ipaddress
-import logging
 import os
 import posixpath
 import re
@@ -51,8 +50,8 @@ from uuid import UUID
 import biplist
 import lz4.block
 
+from UnifiedLog import logger
 
-log = logging.getLogger('UNIFIED_LOG_READER_LIB')
 
 # FORMAT
 #  Timestamp  Thread  Type  Activity  PID  PROC_NAME: (Library) [Subsystem:Category]  MESSAGE
@@ -78,14 +77,14 @@ class VirtualFile(object):
     def open(self, mode='rb'):
         '''Opens a file for reading/writing, returns file pointer or None'''
         try:
-            log.debug('Trying to read {} file {}'.format(self.file_type, self.path))
+            logger.debug('Trying to read {} file {}'.format(self.file_type, self.path))
             self.file_pointer = open(self.path, mode)
             return self.file_pointer
         except Exception as ex:
             if str(ex).find('No such file') == -1:
-                log.exception('Failed to open file {}'.format(self.path))
+                logger.exception('Failed to open file {}'.format(self.path))
             else:
-                log.error('Failed to open as file not found {}'.format(self.path))
+                logger.error('Failed to open as file not found {}'.format(self.path))
                 self.file_not_found = True
             self.is_valid = False
         return None
@@ -143,7 +142,7 @@ def ReadAPFSTime(mac_apfs_time): # Mac APFS timestamp is nano second time epoch 
                 mac_apfs_time = float(mac_apfs_time)
             return datetime.datetime(1970, 1, 1) + datetime.timedelta(seconds=mac_apfs_time/1000000000.)
         except Exception as ex:
-            log.error("ReadAPFSTime() Failed to convert timestamp from value " + str(mac_apfs_time) + " Error was: " + str(ex))
+            logger.error("ReadAPFSTime() Failed to convert timestamp from value " + str(mac_apfs_time) + " Error was: " + str(ex))
     return ''
 
 def ReadNtSid(data):
@@ -151,13 +150,13 @@ def ReadNtSid(data):
     sid = ''
     size = len(data)
     if size < 8:
-        log.error('Not a windows sid')
+        logger.error('Not a windows sid')
     rev = struct.unpack("<B", data[0])[0]
     num_sub_auth = struct.unpack("<B", data[1])[0]
     authority = struct.unpack(">I", data[4:8])[0]
 
     if size < (8 + (num_sub_auth * 4)):
-        log.error('buffer too small or truncated - cant fit all sub_auth')
+        logger.error('buffer too small or truncated - cant fit all sub_auth')
         return ''
     sub_authorities = struct.unpack('<{}I'.format(num_sub_auth), data[8:8*num_sub_auth])
     sid = 'S-{}-{}-'.format(rev, authority) + '-'.join([str(sa) for sa in sub_authorities])
@@ -214,12 +213,12 @@ def ReadCString(data, max_len=1024):
     try:
         null_pos = data.find(b'\x00', 0, max_len)
         if null_pos == -1:
-            log.warning("Possible corrupted string encountered")
+            logger.warning("Possible corrupted string encountered")
             string = data.decode('utf8')
         else:
             string = data[0:null_pos].decode('utf8')
     except:
-        log.exception('Error reading C-String')
+        logger.exception('Error reading C-String')
     return string
 
 def ReadCStringAndEndPos(data, max_len=1024):
@@ -234,12 +233,12 @@ def ReadCStringAndEndPos(data, max_len=1024):
     try:
         null_pos = data.find(b'\x00', 0, max_len)
         if null_pos == -1:
-            log.warning("Possible corrupted string encountered")
+            logger.warning("Possible corrupted string encountered")
             string = data.decode('utf8')
         else:
             string = data[0:null_pos].decode('utf8')
     except:
-        log.exception('Error reading C-String')
+        logger.exception('Error reading C-String')
     return string, null_pos
 
 def DecompressTraceV3(trace_file, out_file):
@@ -256,7 +255,7 @@ def DecompressTraceV3(trace_file, out_file):
             begin_pos = trace_file.tell() - 4
             trace_file.seek(begin_pos + 8)
             struct_len = struct.unpack('<Q', trace_file.read(8))[0]
-            log.debug("index={} pos=0x{:X} tag=0x{}".format(index, begin_pos, binascii.hexlify(tag)[::-1]))
+            logger.debug("index={} pos=0x{:X} tag=0x{}".format(index, begin_pos, binascii.hexlify(tag)[::-1]))
 
             trace_file.seek(begin_pos)
             chunk_data_incl_header = trace_file.read(16 + struct_len)
@@ -270,7 +269,7 @@ def DecompressTraceV3(trace_file, out_file):
                 out_file.write(struct.pack('<Q', len(uncompressed))) # New size
                 out_file.write(uncompressed)
             else:
-                log.error('Unknown chunk tag value encountered : {}'.format(binascii.hexlify(tag)))
+                logger.error('Unknown chunk tag value encountered : {}'.format(binascii.hexlify(tag)))
                 out_file.write(chunk_data_incl_header)
             if struct_len % 8: # Go to QWORD boundary
                 struct_len += 8 - (struct_len % 8)
@@ -280,7 +279,7 @@ def DecompressTraceV3(trace_file, out_file):
             tag = trace_file.read(4)
             index += 1
     except Exception as ex:
-        log.exception('')
+        logger.exception('')
         return False
     return True
 
@@ -302,11 +301,11 @@ def DecompressChunkData(chunk_data, data_len):
                 uncompressed += chunk_data[comp_start + 8:comp_start + 8 + uncompressed_size]
                 comp_start += 8 + uncompressed_size
             else:
-                log.error('Unknown compression value {} @ 0x{:X} - {}'.format(binascii.hexlify(comp_header), begin_pos + comp_start, comp_header))
+                logger.error('Unknown compression value {} @ 0x{:X} - {}'.format(binascii.hexlify(comp_header), begin_pos + comp_start, comp_header))
                 break
             comp_header = chunk_data[comp_start:comp_start + 4]
     else:
-        log.error('Unknown compression type {}'.format(binascii.hexlify(chunk_data[16:20])))
+        logger.error('Unknown compression type {}'.format(binascii.hexlify(chunk_data[16:20])))
     return uncompressed
 
 class ExtraFileReference(object):
@@ -344,7 +343,7 @@ class ProcInfo(object):
         if sc:
             return (sc[0], sc[1])
         # Not found!
-        log.error("Could not find subsystem_category_id={}".format(sc_id))
+        logger.error("Could not find subsystem_category_id={}".format(sc_id))
         return ('','')
 
 class ChunkMeta(object):
@@ -373,7 +372,7 @@ class Catalog(object):
             if proc_info.id == id:
                 return proc_info
         # Not found!
-        log.error("ProcInfo with id={} not found".format(id))
+        logger.error("ProcInfo with id={} not found".format(id))
         return None
 
 class TraceV3(object):
@@ -422,7 +421,7 @@ class TraceV3(object):
     def ParseChunkHeader(self, buffer, debug_file_pos):
         '''Returns tuple (tag, Subtag, DataLength)'''
         tag, subtag, data_length = struct.unpack("<IIQ", buffer)
-        log.debug("Chunk {} Tag=0x{:X} Subtag=0x{:X} Data_Length=0x{:X} @ 0x{:X}".format(self.chunk_read_count, tag, subtag, data_length, debug_file_pos))
+        logger.debug("Chunk {} Tag=0x{:X} Subtag=0x{:X} Data_Length=0x{:X} @ 0x{:X}".format(self.chunk_read_count, tag, subtag, data_length, debug_file_pos))
         self.chunk_read_count += 1
         return (tag, subtag, data_length)
 
@@ -447,7 +446,7 @@ class TraceV3(object):
             elif item_id == 0x6103: # timezone string
                 pass
             else:                   # not yet seen item
-                log.info('New header item seen, item_id=0x{:X}'.format(item_id))
+                logger.info('New header item seen, item_id=0x{:X}'.format(item_id))
             pos += item_length
         self.DebugPrintTimestampFromContTime(self.header_item_continuousTime, "File Header")
 
@@ -479,7 +478,7 @@ class TraceV3(object):
                 ut.Parse()
                 catalog.FileObjects.append(ut)
         except:
-            log.exception('')
+            logger.exception('')
 
     def ProcessMetaChunk(self, buffer, debug_file_pos):
         '''Read chunk with flag 0x600B, this contains metadata/catalog data'''
@@ -567,7 +566,7 @@ class TraceV3(object):
         pos = buf_size - 1
         if buf_size == 1:
             if total_items != 0:
-                log.error('Unknown data found in log data buffer')
+                logger.error('Unknown data found in log data buffer')
             return data
         
         items_read = 0
@@ -575,7 +574,7 @@ class TraceV3(object):
         while items_read < total_items:
             if pos <= 0:
                 break
-                log.error('Error, no place for data!')
+                logger.error('Error, no place for data!')
             item_size = struct.unpack('<B', buffer[pos : pos + 1])[0]
             descriptors.append(item_size)
             items_read += 1
@@ -604,7 +603,7 @@ class TraceV3(object):
         items_read = 0
         while items_read < total_items:
             if pos >= buf_size:
-                log.error('Trying to read past buffer size!')
+                logger.error('Trying to read past buffer size!')
                 break
             item_type, item_size = struct.unpack('<BB', buffer[pos:pos+2])
             pos += 2
@@ -623,14 +622,14 @@ class TraceV3(object):
             elif item_type & 0xF0 == 0x10: #0x10, 0x12 seen # Item length only, this is usually followed by 0x31 or 0x32 item_type. If length is 0, then only 0x31 is seen.
                 # Seen in strings where predicate specifies string length Eg: %.4s
                 if item_size != 4:
-                    log.warning('Log data Item Length was 0x{:X} instead of 0x4. item_type=0x{:X}'.format(item_size, item_type))
+                    logger.warning('Log data Item Length was 0x{:X} instead of 0x4. item_type=0x{:X}'.format(item_size, item_type))
                 size = struct.unpack('<I', buffer[pos:pos+4])
                 # Not using this information anywhere as it seems redundant!
             else:
-                log.warning('item_type unknown (0x{:X})'.format(item_type))
+                logger.warning('item_type unknown (0x{:X})'.format(item_type))
                 data.append([item_type, item_size, buffer[pos:pos+item_size]])
             if item_size == 0:
-                log.warning('item_size was zero!')
+                logger.warning('item_size was zero!')
                 break
             pos += item_size
             items_read += 1
@@ -650,10 +649,10 @@ class TraceV3(object):
                     data[data_index] = [data_type, size, buffer[pos + offset : pos + offset + size] ]
                     pos_debug += size
         #if (total_items > 0) or (buf_size > 2):
-        #    pass #log.debug(hex(unknown) + " ** " + str(data))
+        #    pass #logger.debug(hex(unknown) + " ** " + str(data))
         #unused buffer
         #if pos_debug < buf_size:
-        #    pass #log.debug("Extra Data bytes ({}) @ {} ".format(buf_size-pos_debug, pos_debug) + " ## " + binascii.hexlify(buffer[pos_debug:]))
+        #    pass #logger.debug("Extra Data bytes ({}) @ {} ".format(buf_size-pos_debug, pos_debug) + " ## " + binascii.hexlify(buffer[pos_debug:]))
         return data
 
     def RecreateMsgFromFmtStringAndData(self, format_str, data, log_file_pos):
@@ -665,7 +664,7 @@ class TraceV3(object):
         format_str_consumed = 0 # No. of bytes read
         last_hit_end = 0
         for index, hit in enumerate(self.regex.finditer(format_str_for_regex)):
-            #log.debug('{} {} all={}  {}  {} {} {}'.format(hit.start(), hit.end(), hit.group(0), hit.group(1), hit.group(2), hit.group(3), hit.group(4)))
+            #logger.debug('{} {} all={}  {}  {} {} {}'.format(hit.start(), hit.end(), hit.group(0), hit.group(1), hit.group(2), hit.group(3), hit.group(4)))
             hit_len = hit.end() - hit.start()
             last_hit_end = hit.end()
             msg += format_str[format_str_consumed : hit.start()] # slice from end of last hit to begin of new hit
@@ -673,7 +672,7 @@ class TraceV3(object):
             # Now add data from this hit
             if index >= len(data):
                 msg += '<decode: missing data>' # Message provided by 'log' program for missing data
-                log.error('missing data for log @ 0x{:X}'.format(log_file_pos))
+                logger.error('missing data for log @ 0x{:X}'.format(log_file_pos))
                 continue
             data_item = data[index]
             # msg += data from this hit
@@ -694,17 +693,17 @@ class TraceV3(object):
                         if data_type & 0x1:
                             msg += '<private>'
                         else:
-                            log.error('unknown err, size=0, data_type=0x{:X}'.format(data_type))
+                            logger.error('unknown err, size=0, data_type=0x{:X}'.format(data_type))
                     else: # size should be 4 or 8
                         if specifier in ('d', 'D'): # signed int32 or int64
                             specifier = 'd'  # Python does not support 'D'
-                            if   data_size == 4: number = struct.unpack("<i", raw_data)[0] 
-                            elif data_size == 8: number = struct.unpack("<q", raw_data)[0] 
-                            else: log.error('Unknown length ({}) for number '.format(data_size))
+                            if   data_size == 4: number = struct.unpack("<i", raw_data)[0]
+                            elif data_size == 8: number = struct.unpack("<q", raw_data)[0]
+                            else: logger.error('Unknown length ({}) for number '.format(data_size))
                         else:
-                            if   data_size == 4: number = struct.unpack("<I", raw_data)[0] 
-                            elif data_size == 8: number = struct.unpack("<Q", raw_data)[0] 
-                            else: log.error('Unknown length ({}) for number '.format(data_size))
+                            if   data_size == 4: number = struct.unpack("<I", raw_data)[0]
+                            elif data_size == 8: number = struct.unpack("<Q", raw_data)[0]
+                            else: logger.error('Unknown length ({}) for number '.format(data_size))
                             if   specifier == 'U': specifier = 'u'  # Python does not support 'U'
                             elif specifier == 'O': specifier = 'o'  # Python does not support 'O'
                         msg += ('%'+ flags_width_precision + specifier) % number
@@ -714,11 +713,11 @@ class TraceV3(object):
                         if data_type & 0x1:
                             msg += '<private>'
                         else:
-                            log.error('unknown err, size=0, data_type=0x{:X}'.format(data_type))
+                            logger.error('unknown err, size=0, data_type=0x{:X}'.format(data_type))
                     else:
                         if   data_size == 8: number = struct.unpack("<d", raw_data)[0]
                         elif data_size == 4: number = struct.unpack("<f", raw_data)[0]
-                        else: log.error('Unknown length ({}) for float/double '.format(data_size))
+                        else: logger.error('Unknown length ({}) for float/double '.format(data_size))
                         msg += ('%'+ flags_width_precision + specifier) % number
                 elif specifier in ('c', 'C', 's', 'S', '@'):  # c is Single char but stored as 4 bytes
                     # %C & %S are unicode char, but everything in log file would be encoded as utf8, so should be the same
@@ -733,14 +732,14 @@ class TraceV3(object):
                         try:
                             chars = raw_data.decode('utf8').rstrip('\x00')
                         except Exception as ex:
-                            log.error('Error decoding utf8 in log @ 0x{:X}, data was "{}", error was {}'.format(log_file_pos, binascii.hexlify(raw_data), str(ex)))
+                            logger.error('Error decoding utf8 in log @ 0x{:X}, data was "{}", error was {}'.format(log_file_pos, binascii.hexlify(raw_data), str(ex)))
                             chars = ''
                         chars = ('%'+ (flags_width_precision if flags_width_precision.find('*')==-1 else '')  + "s") % chars # Python does not like '%.*s'
                     msg += chars
                 elif specifier == 'P':  # Pointer to data of different types!
                     if not custom_specifier:
                         msg += hit.group(0)
-                        log.info("Unknown data object with no custom specifier in log @ 0x{:X}".format(log_file_pos))
+                        logger.info("Unknown data object with no custom specifier in log @ 0x{:X}".format(log_file_pos))
                         continue
                     if data_size == 0:
                         if data_type & 0x1:
@@ -751,7 +750,7 @@ class TraceV3(object):
                         if data_size == 0: # size
                             if data_type & 0x1:
                                 msg += '<private>'
-                            else: log.error('unknown err, size=0, data_type=0x{:X} in log @ 0x{:X}'.format(data_type, log_file_pos))
+                            else: logger.error('unknown err, size=0, data_type=0x{:X} in log @ 0x{:X}'.format(data_type, log_file_pos))
                         else:
                             uuid = UUID(bytes=raw_data)
                             msg += str(uuid).upper()
@@ -767,8 +766,8 @@ class TraceV3(object):
                             domain = ReadCString(raw_data[5:], len(raw_data) - 5)
                             msg += 'user: {}@{}'.format(uid, domain)
                         else:
-                            log.error("Unknown value for mbr_details found 0x{} in log @ 0x{:X}".format(unk.encode('hex'), log_file_pos))
-                    elif custom_specifier.find('odtypes:nt_sid_t') > 0: 
+                            logger.error("Unknown value for mbr_details found 0x{} in log @ 0x{:X}".format(unk.encode('hex'), log_file_pos))
+                    elif custom_specifier.find('odtypes:nt_sid_t') > 0:
                         msg += ReadNtSid(raw_data)
                     elif custom_specifier.find('location:SqliteResult') > 0:
                         number = struct.unpack("<I", raw_data)[0]
@@ -798,14 +797,14 @@ class TraceV3(object):
                             ipv4_str = '{}.{}.{}.{}'.format(ipv4[0],ipv4[1],ipv4[2],ipv4[3])
                             msg += ipv4_str # TODO- test this, not seen yet!
                         else:
-                            log.error("Unknown sock family value 0x{:X} in log @ 0x{:X}".format(family, log_file_pos))
+                            logger.error("Unknown sock family value 0x{:X} in log @ 0x{:X}".format(family, log_file_pos))
                     # elif custom_specifier.find('_CLDaemonStatusStateTrackerState') > 0:
                     #     msg += Read_CLDaemonStatusStateTrackerState(raw_data)
                     elif custom_specifier.find('_CLClientManagerStateTrackerState') > 0:
                         msg += Read_CLClientManagerStateTrackerState(raw_data)
                     else:
                         msg += hit.group(0)
-                        log.info("Unknown custom data object type '{}' data size=0x{:X} in log @ 0x{:X}".format(custom_specifier, len(raw_data), log_file_pos))
+                        logger.info("Unknown custom data object type '{}' data size=0x{:X} in log @ 0x{:X}".format(custom_specifier, len(raw_data), log_file_pos))
                         pass #TODO
                 elif specifier == 'p':  # Should be 8bytes to be displayed as uint 32/64 in hex lowercase no leading zeroes
                     number = ''
@@ -813,27 +812,27 @@ class TraceV3(object):
                         if data_type & 0x1:
                             msg += '<private>'
                         else:
-                            log.error('unknown err, size=0, data_type=0x{:X} in log @ 0x{:X}'.format(data_type, log_file_pos))
+                            logger.error('unknown err, size=0, data_type=0x{:X} in log @ 0x{:X}'.format(data_type, log_file_pos))
                     else: # size should be 8 or 4
                         if   data_size == 8: number = struct.unpack("<Q", raw_data)[0]
                         elif data_size == 4: number = struct.unpack("<I", raw_data)[0]
-                        else: log.error('Unknown length ({}) for number in log @ 0x{:X}'.format(data_size, log_file_pos))
+                        else: logger.error('Unknown length ({}) for number in log @ 0x{:X}'.format(data_size, log_file_pos))
                         msg += ('%' + flags_width_precision + 'x') % number
             except:
-                log.exception('exception for log @ 0x{:X}'.format(log_file_pos))
+                logger.exception('exception for log @ 0x{:X}'.format(log_file_pos))
                 msg += "E-R-R-O-R"
 
         if format_str_consumed < len_format_str:
             # copy remaining bytes from end of last hit to end of strings
             msg += format_str[last_hit_end:]
         elif format_str_consumed > len_format_str:
-            log.error('format_str_consumed ({}) > len_format_str ({})'.format(format_str_consumed, len_format_str))
+            logger.error('format_str_consumed ({}) > len_format_str ({})'.format(format_str_consumed, len_format_str))
 
         return msg
 
     def DebugPrintLog(self, file_pos, cont_time, timestamp, thread, level_type, activity, pid, euid, ttl, p_name, lib, sub_sys, cat, msg, signpost):
         global debug_log_count
-        log.debug('{} (0x{:X}) {} ({}) 0x{:X} {} 0x{:X} {} {} '.format(debug_log_count, file_pos, \
+        logger.debug('{} (0x{:X}) {} ({}) 0x{:X} {} 0x{:X} {} {} '.format(debug_log_count, file_pos, \
                     ReadAPFSTime(timestamp), cont_time, thread, level_type, activity, pid, euid, ttl, p_name) + \
                     ( '[{}] '.format(signpost) if signpost else '') + \
                       '{}: '.format(p_name) + \
@@ -846,12 +845,12 @@ class TraceV3(object):
         '''Given a continuous time value, print its human readable form'''
         ts = FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
         time = ts.time_stamp + ct - ts.continuousTime
-        log.debug("{} timestamp={}".format(msg, ReadAPFSTime(time)))
+        logger.debug("{} timestamp={}".format(msg, ReadAPFSTime(time)))
 
     def DebugCheckLogLengthRemaining(self, log_length, bytes_needed, log_abs_offset):
         '''Checks if we have enough space for extracting more elements'''
         if log_length < bytes_needed:
-            log.error('Log data length (0x{:X}) < {} for log @ 0x{:X}!'.format(log_length, bytes_needed, log_abs_offset))
+            logger.error('Log data length (0x{:X}) < {} for log @ 0x{:X}!'.format(log_length, bytes_needed, log_abs_offset))
             raise ValueError('Not enough data in log data buffer!')
 
     def ProcessDataChunk(self, buffer, catalog, meta_chunk_index, debug_file_pos, logs):
@@ -869,7 +868,7 @@ class TraceV3(object):
             proc_info = self.GetProcInfo(proc_id1, proc_id2, chunk_meta)
             log_file_pos = debug_file_pos + pos + pos2 - 32
             if not proc_info: # Error checking and skipping that chunk entry, so we can parse the rest
-                log.error('Could not get proc_info, skipping log @ 0x{:X}'.format(log_file_pos))
+                logger.error('Could not get proc_info, skipping log @ 0x{:X}'.format(log_file_pos))
                 pos += data_size
                 if ((pos - start_skew) % 8):
                     # sometimes no padding after privatedata. Try to detect null byte, if so pad it.
@@ -877,7 +876,7 @@ class TraceV3(object):
                         pad_len = 8 - ((pos - start_skew) % 8)
                         pos += pad_len
                     else:
-                        log.warning('Avoided padding for log ending @ 0x{:X}'.format(debug_file_pos + pos))
+                        logger.warning('Avoided padding for log ending @ 0x{:X}'.format(debug_file_pos + pos))
             pid = proc_info.pid
             euid = proc_info.euid
             if tag == 0x6001: #Firehose
@@ -905,12 +904,12 @@ class TraceV3(object):
                     
                     ct = continuousTime + (ct_rel | (ct_rel_upper << 32))
                     # processing
-                    log_file_pos = debug_file_pos + pos + pos2 - 24 
-                    #log.debug('log_file_pos=0x{:X}'.format(log_file_pos))
+                    log_file_pos = debug_file_pos + pos + pos2 - 24
+                    #logger.debug('log_file_pos=0x{:X}'.format(log_file_pos))
 
                     ts = FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
                     time = ts.time_stamp + ct - ts.continuousTime
-                    #log.debug("Type 6001 LOG timestamp={}".format(ReadAPFSTime(time)))
+                    #logger.debug("Type 6001 LOG timestamp={}".format(ReadAPFSTime(time)))
                     try: # Big Exception block for any log uncaught exception
                         dsc_cache = catalog.FileObjects[proc_info.dsc_file_index] if (proc_info.dsc_file_index != -1) else None
                         ut_cache = catalog.FileObjects[proc_info.uuid_file_index]
@@ -966,8 +965,8 @@ class TraceV3(object):
                         elif u1_upper_byte == 0x10: log_type = 'Error'
                         elif u1_upper_byte == 0x11: log_type = 'Fault'
 
-                        if u2 & 0x7000: 
-                            log.info('Unknown flag for u2 encountered u2=0x{:4X} @ 0x{:X} ct={}'.format(u2, log_file_pos, ct))
+                        if u2 & 0x7000:
+                            logger.info('Unknown flag for u2 encountered u2=0x{:4X} @ 0x{:X} ct={}'.format(u2, log_file_pos, ct))
                             #raise ValueError('Unk u2 flag')
                         if u2 & 0x8000: has_sp_name = True
 
@@ -979,7 +978,7 @@ class TraceV3(object):
                         if u2 & 0x0100: has_activity_unk = True if is_activity else False
 
                         if u2 & 0x00E0: # E=1110
-                            log.info('Unknown flag for u2 encountered u2=0x{:4X} @ 0x{:X} ct={}'.format(u2, log_file_pos, ct))
+                            logger.info('Unknown flag for u2 encountered u2=0x{:4X} @ 0x{:X} ct={}'.format(u2, log_file_pos, ct))
                             #raise ValueError('Unk u2 flag')
                         if u2 & 0x0010: has_unique_pid = True
 
@@ -997,7 +996,7 @@ class TraceV3(object):
                                 pos3 += 8
                                 log_data_len2 -= 8
                             else:
-                                log.error('Expected activityID, got something else!')
+                                logger.error('Expected activityID, got something else!')
                             if has_unique_pid:
                                 proc_id = struct.unpack('<Q', buffer[pos + pos3 : pos + pos3 + 8])[0]
                                 pos3 += 8
@@ -1009,7 +1008,7 @@ class TraceV3(object):
                                     pos3 += 8
                                     log_data_len2 -= 8
                                 else:
-                                    log.error('Expected activityID, got something else!')
+                                    logger.error('Expected activityID, got something else!')
                             if has_other_act_id: # yet another act_id # other_aid [apple]
                                 u5, u6 = struct.unpack('<II', buffer[pos + pos3 : pos + pos3 + 8])
                                 if u6 == 0x80000000:
@@ -1017,7 +1016,7 @@ class TraceV3(object):
                                     pos3 += 8
                                     log_data_len2 -= 8
                                 else:
-                                    log.error('Expected activityID, got something else!')
+                                    logger.error('Expected activityID, got something else!')
                         else:
                             if has_act_id:
                                 u5, u6 = struct.unpack('<II', buffer[pos + pos3 : pos + pos3 + 8])
@@ -1026,7 +1025,7 @@ class TraceV3(object):
                                     pos3 += 8
                                     log_data_len2 -= 8
                                 else:
-                                    log.error('Expected activityID, got something else!')
+                                    logger.error('Expected activityID, got something else!')
 
                         if has_private_data:
                             if private_strings:    
@@ -1034,7 +1033,7 @@ class TraceV3(object):
                                 pos3 += 4
                                 log_data_len2 -= 4
                             else:
-                                log.error('Did not read priv_str_v_offset as no private_strings are present @ log 0x{:X}! is_activity={}'.format(log_file_pos, bool(is_activity)))
+                                logger.error('Did not read priv_str_v_offset as no private_strings are present @ log 0x{:X}! is_activity={}'.format(log_file_pos, bool(is_activity)))
 
                         u5 = struct.unpack('<I', buffer[pos + pos3 : pos + pos3 + 4])[0]
                         pos3 += 4
@@ -1057,7 +1056,7 @@ class TraceV3(object):
                                         uuid_found = True
                                         break
                                 if not uuid_found:
-                                    log.error('no uuid found for absolute pc - uuid_file_id was {} u5=0x{:X} fmt_str_v_offset=0x{:X} @ 0x{:X} ct={}'.format(uuid_file_id, u5, fmt_str_v_offset, log_file_pos, ct))
+                                    logger.error('no uuid found for absolute pc - uuid_file_id was {} u5=0x{:X} fmt_str_v_offset=0x{:X} @ 0x{:X} ct={}'.format(uuid_file_id, u5, fmt_str_v_offset, log_file_pos, ct))
                                     format_str = '<compose failure [missing precomposed log]>' # error message from log utility
                             else:             # UUID
                                 file_path = binascii.hexlify(buffer[pos + pos3 : pos + pos3 + 16]).upper()
@@ -1078,7 +1077,7 @@ class TraceV3(object):
                                     self.other_uuidtext[file_path] = ut # Add to other_uuidtext, so we don't have to parse it again
                                     if not ut.Parse():
                                         ut = None
-                                        log.error('Error parsing uuidtext file {} @ 0x{:X} ct={}'.format(uuidtext_full_path, log_file_pos, ct))
+                                        logger.error('Error parsing uuidtext file {} @ 0x{:X} ct={}'.format(uuidtext_full_path, log_file_pos, ct))
                                 if ut:
                                     format_str = ut.ReadFmtStringFromVirtualOffset(fmt_str_v_offset)
                                     p_name = ut_cache.library_name
@@ -1086,8 +1085,8 @@ class TraceV3(object):
                                     imageUUID = ut.Uuid
                                     senderImagePath = ut.library_path
                                 else:
-                                    log.debug("Could not read from uuidtext {} @ 0x{:X} ct={}".format(file_path, log_file_pos, ct))
-                        
+                                    logger.debug("Could not read from uuidtext {} @ 0x{:X} ct={}".format(file_path, log_file_pos, ct))
+
                         if not is_activity:
                             if has_subsys:
                                 item_id = struct.unpack('<H', buffer[pos + pos3 : pos + pos3 + 2])[0]
@@ -1104,8 +1103,8 @@ class TraceV3(object):
                                 data_ref_id = struct.unpack('<H', buffer[pos + pos3 : pos + pos3 + 2])[0]
                                 pos3 += 2
                                 log_data_len2 -= 2
-                                log.debug('Data reference ID = {:4X}'.format(data_ref_id))
-                                
+                                logger.debug('Data reference ID = {:4X}'.format(data_ref_id))
+
                             if is_signpost:
                                 spid_val = struct.unpack('<Q', buffer[pos + pos3 : pos + pos3 + 8])[0]
                                 pos3 += 8
@@ -1134,7 +1133,7 @@ class TraceV3(object):
                                 try:
                                     signpost_name, c_a, c_b = dsc_cache.ReadFmtStringAndEntriesFromVirtualOffset(sp_name_ref)
                                 except:
-                                    log.error("Could not get signpost name! @ 0x{:X} ct={}".format(log_file_pos, ct))
+                                    logger.error("Could not get signpost name! @ 0x{:X} ct={}".format(log_file_pos, ct))
                             cache_b1 = dsc_cache.GetUuidEntryFromVirtualOffset(u5)
                             if cache_b1:
                                 lib = cache_b1[4] # senderimage_name
@@ -1145,14 +1144,14 @@ class TraceV3(object):
                             try:
                                 if fmt_str_v_offset & 0x80000000: # check for highest bit
                                     format_str = "%s"
-                                    log.debug("fmt_str_v_offset highest bit set @ 0x{:X} ct={}".format(log_file_pos, ct))
+                                    logger.debug("fmt_str_v_offset highest bit set @ 0x{:X} ct={}".format(log_file_pos, ct))
                                 else:
                                     format_str, cache_a, cache_b = dsc_cache.ReadFmtStringAndEntriesFromVirtualOffset(fmt_str_v_offset)
                             except:
-                                log.error('Failed to get DSC msg string @ 0x{:X} ct={}'.format(log_file_pos, ct))
+                                logger.error('Failed to get DSC msg string @ 0x{:X} ct={}'.format(log_file_pos, ct))
                         elif has_alternate_uuid: pass #u2 & 0x0008: # Parsed above
                         else:
-                            log.warning("No message string flags! @ 0x{:X} ct={}".format(log_file_pos, ct))
+                            logger.warning("No message string flags! @ 0x{:X} ct={}".format(log_file_pos, ct))
 
                         if log_data_len2:
                             strings_slice = ''
@@ -1162,10 +1161,10 @@ class TraceV3(object):
                                     strings_len = len(private_strings)
                                     strings_start_offset = priv_str_v_offset - strings_v_offset
                                     if (strings_start_offset > len(private_strings)) or (strings_start_offset < 0):
-                                        log.error('Error calculating strings virtual offset @ 0x{:X} ct={}'.format(log_file_pos, ct))
+                                        logger.error('Error calculating strings virtual offset @ 0x{:X} ct={}'.format(log_file_pos, ct))
                                     strings_slice = private_strings[strings_start_offset : strings_start_offset + priv_str_len]
                                 else:
-                                    log.error('Flag has_private_data but no strings present! @ 0x{:X} ct={}'.format(log_file_pos, ct))
+                                    logger.error('Flag has_private_data but no strings present! @ 0x{:X} ct={}'.format(log_file_pos, ct))
                             else:
                                 strings_slice = ''
                             if u1 & 0x3 == 0x3: # data_descriptor_at_buffer_end
@@ -1180,7 +1179,7 @@ class TraceV3(object):
                             if log_data:
                                 log_data = log_data = self.ReadLogDataBuffer(log_data, len(log_data), '')
                             else:
-                                log.error('Data Reference not found for unique_ref=0x{:X} ct={}!'.format(unique_ref, ct))
+                                logger.error('Data Reference not found for unique_ref=0x{:X} ct={}!'.format(unique_ref, ct))
                                 format_str = "<decode: missing data>"
                                 # TODO - Sometimes this data is in another file, create a mechanism to deal with that
                                 # Eg: Logdata.Livedata.tracev3 will reference entries from Persist\*.tracev3 
@@ -1195,7 +1194,7 @@ class TraceV3(object):
                                         log_msg                            
                                     ])
                     except Exception as ex:
-                        log.exception("Exception while processing log @ 0x{:X} ct={}, skipping that log entry!".format(log_file_pos, ct))
+                        logger.exception("Exception while processing log @ 0x{:X} ct={}, skipping that log entry!".format(log_file_pos, ct))
                     ##
                     debug_log_count += 1
                     
@@ -1205,8 +1204,8 @@ class TraceV3(object):
                         pos2 += 8 - ((pos2 - start_skew) % 8)
                     num_logs_debug += 1
 
-                log.debug("Parsed {} type 6001 logs".format(num_logs_debug))
-               
+                logger.debug("Parsed {} type 6001 logs".format(num_logs_debug))
+
                 pos += data_size
                 if ((pos - start_skew) % 8):
                     # sometimes no padding after privatedata. Try to detect null byte, if so pad it.
@@ -1214,7 +1213,7 @@ class TraceV3(object):
                         pad_len = 8 - ((pos - start_skew) % 8)
                         pos += pad_len
                     else:
-                        log.warning('Avoided padding for firehose chunk ending @ 0x{:X}'.format(debug_file_pos + pos))
+                        logger.warning('Avoided padding for firehose chunk ending @ 0x{:X}'.format(debug_file_pos + pos))
             elif tag == 0x6002: # Oversize
                 ct, data_ref_id, data_len = struct.unpack('<QII', buffer[pos + pos2 : pos + pos2 + 16])
                 pos2 += 16
@@ -1225,7 +1224,7 @@ class TraceV3(object):
                 ## Debug print
                 ts = FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
                 time = ts.time_stamp + ct - ts.continuousTime
-                log.debug("Type 6002 timestamp={} ({}), data_ref_id=0x{:X} @ 0x{:X}".format(ReadAPFSTime(time), ct, data_ref_id, log_file_pos))
+                logger.debug("Type 6002 timestamp={} ({}), data_ref_id=0x{:X} @ 0x{:X}".format(ReadAPFSTime(time), ct, data_ref_id, log_file_pos))
                 pos += data_size
                 if (pos - start_skew) % 8:
                     pad_len = 8 - ((pos - start_skew) % 8)
@@ -1257,16 +1256,16 @@ class TraceV3(object):
                             plist = biplist.readPlistFromString(data)
                             log_msg = unicode(plist)
                         except:
-                            log.exception('Problem reading plist from log @ 0x{:X} ct={}'.format(log_file_pos, ct))
+                            logger.exception('Problem reading plist from log @ 0x{:X} ct={}'.format(log_file_pos, ct))
                     elif data_type == 2:  #custom object, not being read by log utility in many cases!
-                        log.error('Did not read data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
+                        logger.error('Did not read data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
                     elif data_type == 3:  # custom [Apple] #TODO - read non-plist data
                         if obj_type_str_1 == 'location' and obj_type_str_2 == '_CLClientManagerStateTrackerState':
                             log_msg = Read_CLClientManagerStateTrackerState(data)
                         else:
-                            log.error('Did not read data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
+                            logger.error('Did not read data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
                     else:
-                        log.error('Unknown data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))           
+                        logger.error('Unknown data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
                     pos2 += data_len
 
                 try: # for any uncaught exception
@@ -1281,7 +1280,7 @@ class TraceV3(object):
 
                     ts = FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
                     time = ts.time_stamp + ct - ts.continuousTime
-                    #log.debug("Type 6003 timestamp={}".format(ReadAPFSTime(time)))
+                    #logger.debug("Type 6003 timestamp={}".format(ReadAPFSTime(time)))
 
                     logs.append([self.file.filename, log_file_pos, ct, time, 0, log_type, 0, 0, \
                                 pid, euid, ttl, p_name, str(uuid).upper(), '', '',\
@@ -1290,7 +1289,7 @@ class TraceV3(object):
                                 name + "\n" + log_msg                        
                                 ])
                 except:
-                    log.exception("Exception while processing logtype 'State' @ 0x{:X} ct={}, skipping that log entry!".format(log_file_pos, ct))
+                    logger.exception("Exception while processing logtype 'State' @ 0x{:X} ct={}, skipping that log entry!".format(log_file_pos, ct))
                 debug_log_count += 1
 
                 pos += data_size
@@ -1298,7 +1297,7 @@ class TraceV3(object):
                     pad_len = 8 - ((pos - start_skew) % 8)
                     pos += pad_len
             else:
-                log.info("Unexpected tag value 0x{:X} @ 0x{:X} (Expected 0x6001, 0x6002 or 0x6003)".format(tag, log_file_pos))
+                logger.info("Unexpected tag value 0x{:X} @ 0x{:X} (Expected 0x6001, 0x6002 or 0x6003)".format(tag, log_file_pos))
                 pos += data_size
                 pad_len = (pos - start_skew) % 8
                 if pad_len:
@@ -1309,7 +1308,7 @@ class TraceV3(object):
     def GetProcInfo(self, proc_id1, proc_id2, chunk_meta):
         proc_info = chunk_meta.ProcInfos.get( proc_id2 | (proc_id1 << 32) , None)
         if proc_info == None:
-            log.error("Could not find proc_info with proc_id1={} proc_id2={}".format(proc_id1, proc_id2))
+            logger.error("Could not find proc_info with proc_id1={} proc_id2={}".format(proc_id1, proc_id2))
         return proc_info
 
     def Parse(self, log_list_process_func=None):
@@ -1327,7 +1326,7 @@ class TraceV3(object):
                     log_msg
                    ) 
         '''
-        log.debug("-"*100 + "\r\nParsing traceV3 file {}".format(self.file.filename))
+        logger.debug("-"*100 + "\r\nParsing traceV3 file {}".format(self.file.filename))
         f = self.file.open()
         if not f:
             return False
@@ -1336,10 +1335,10 @@ class TraceV3(object):
             chunk_header = f.read(16)
             tag, subtag, data_length = self.ParseChunkHeader(chunk_header, 0)
             if tag != 0x1000:
-                log.info('Wrong signature in traceV3 file, got 0x{:X} instead of 0x1000'.format(tag))
+                logger.info('Wrong signature in traceV3 file, got 0x{:X} instead of 0x1000'.format(tag))
                 return False
             if subtag != 0x11:
-                log.error('Cannot process this version of unified logging, version=0x{:X}'.format(subtag))
+                logger.error('Cannot process this version of unified logging, version=0x{:X}'.format(subtag))
                 return False
             
             buffer = f.read(data_length) # fileheader_data + items
@@ -1368,7 +1367,7 @@ class TraceV3(object):
                     meta_chunk_index += 1
                     uncompressed_file_pos += 16 + len(uncompressed_buffer)
                 else:
-                    log.info("Unknown header for chunk - 0x{:X} , skipping chunk @ 0x{:X}!".format(tag, pos))
+                    logger.info("Unknown header for chunk - 0x{:X} , skipping chunk @ 0x{:X}!".format(tag, pos))
                     uncompressed_file_pos += 16 + data_length
                 if data_length % 8: # Go to QWORD boundary
                     data_length += 8 - (data_length % 8)
@@ -1382,7 +1381,7 @@ class TraceV3(object):
             if log_list_process_func and (len(logs) > 0):
                 log_list_process_func(logs, self)
         except:
-            log.exception('traceV3 Parser error')
+            logger.exception('traceV3 Parser error')
         return True
 
 class CachedFiles(object):
@@ -1424,9 +1423,9 @@ class CachedFiles(object):
             #                 ut.Parse()
             #                 self.cached_uuidtext[folder_name + uuid_name] = ut
             #     else:
-            #         log.debug(folder_name + ' does not exist')
+            #         logger.debug(folder_name + ' does not exist')
         except Exception:
-            log.exception('')
+            logger.exception('')
 
 
 class Uuidtext(object):
@@ -1452,7 +1451,7 @@ class Uuidtext(object):
                 buffer = f.read(entry[2] - rel_offset)
                 return ReadCString(buffer)
         #Not found
-        log.error('Invalid bounds 0x{:X} for {}'.format(v_offset, str(self.Uuid))) # This is error msg from 'log'
+        logger.error('Invalid bounds 0x{:X} for {}'.format(v_offset, str(self.Uuid))) # This is error msg from 'log'
         return '<compose failure [UUID]>'
 
     def Parse(self):
@@ -1463,7 +1462,7 @@ class Uuidtext(object):
         try:
             buffer = f.read(16) # header
             if buffer[0:4] != b'\x99\x88\x77\x66':
-                log.info('Wrong signature in uuidtext file, got 0x{} instead of 0x99887766'.format(binascii.hexlify(buffer[0:4])))
+                logger.info('Wrong signature in uuidtext file, got 0x{} instead of 0x99887766'.format(binascii.hexlify(buffer[0:4])))
                 return False
             self.flag1, self.flag2, self.num_entries = struct.unpack("<III", buffer[4:16])
             # Read entry structures
@@ -1482,7 +1481,7 @@ class Uuidtext(object):
             self.library_name = posixpath.basename(self.library_path)
 
         except:
-            log.exception('Uuidtext Parser error')
+            logger.exception('Uuidtext Parser error')
             self.file.is_valid = False
         return True
 
@@ -1506,7 +1505,7 @@ class Dsc(object):
                 ret_uuid_entry = self.uuid_entries[a[0]]
                 return (ret_range_entry, ret_uuid_entry)
         #Not found
-        log.error('Failed to find v_offset in Dsc!')
+        logger.error('Failed to find v_offset in Dsc!')
         return (None, None)
 
     def ReadFmtStringAndEntriesFromVirtualOffset(self, v_offset):
@@ -1525,7 +1524,7 @@ class Dsc(object):
             if b[2] == uuid:
                 return b
         #Not found
-        log.error('Failed to find uuid {} in Dsc!'.format(str(uuid)))
+        logger.error('Failed to find uuid {} in Dsc!'.format(str(uuid)))
         return b
 
     def GetUuidEntryFromVirtualOffset(self, v_offset):
@@ -1535,17 +1534,17 @@ class Dsc(object):
                 rel_offset = v_offset - b[0]
                 return b
         #Not found
-        log.error('Failed to find uuid_entry for v_offset 0x{:X} in Dsc!'.format(v_offset))
+        logger.error('Failed to find uuid_entry for v_offset 0x{:X} in Dsc!'.format(v_offset))
         return None
 
     def DebugPrintDsc(self):
-        log.debug("DSC version={} file={}".format(self.version, self.file.filename))
-        log.debug("Range entry values")
+        logger.debug("DSC version={} file={}".format(self.version, self.file.filename))
+        logger.debug("Range entry values")
         for a in self.range_entries:
-            log.debug("{} {} {} {}".format(a[0], a[1], a[2], a[3]))
-        log.debug("Uuid entry values")
+            logger.debug("{} {} {} {}".format(a[0], a[1], a[2], a[3]))
+        logger.debug("Uuid entry values")
         for b in self.uuid_entries:
-            log.debug("{} {} {} {} {}".format(b[0], b[1], b[2], b[3], b[4]))
+            logger.debug("{} {} {} {} {}".format(b[0], b[1], b[2], b[3], b[4]))
 
     def Parse(self):
         '''Parse the dsc file, returns True/False'''
@@ -1555,7 +1554,7 @@ class Dsc(object):
         try:
             buffer = f.read(16) # header
             if buffer[0:4] != b'hcsd':
-                log.info('Wrong signature in DSC file, got 0x{} instead of 0x68637364 (hcsd)'.format(binascii.hexlify(buffer[0:4])))
+                logger.info('Wrong signature in DSC file, got 0x{} instead of 0x68637364 (hcsd)'.format(binascii.hexlify(buffer[0:4])))
                 return False
             self.version, self.num_range_entries, self.num_uuid_entries = struct.unpack("<III", buffer[4:16])
             # Read range structures
@@ -1579,7 +1578,7 @@ class Dsc(object):
                 self.uuid_entries.append([v_off, size, uuid, lib_path, lib_name])
                 pos += 28
         except:
-            log.exception('DSC Parser error')
+            logger.exception('DSC Parser error')
             self.file.is_valid = False
         return True
 
@@ -1591,7 +1590,7 @@ def GetBootUuidTimeSyncList(ts_list, uuid):
     for ts in ts_list:
         if ts.header.boot_uuid == uuid:
             return ts.items
-    log.error("Could not find boot uuid {} in Timesync!".format(uuid))
+    logger.error("Could not find boot uuid {} in Timesync!".format(uuid))
     return None
 
 def FindClosestTimesyncItem(ts_list, uuid, continuousTime):
@@ -1603,7 +1602,7 @@ def FindClosestTimesyncItem(ts_list, uuid, continuousTime):
             return FindClosestTimesyncItemInList(ts.items, continuousTime)
 
     if not found_boot_id:
-        log.error("Could not find boot uuid {} in Timesync!".format(uuid))
+        logger.error("Could not find boot uuid {} in Timesync!".format(uuid))
     return None
 
 def FindClosestTimesyncItemInList(ts_items, continuousTime):
@@ -1654,15 +1653,15 @@ def ReadTimesyncFile(buffer, ts_list):
         while pos < size:
             sig, header_size, unk1  = struct.unpack("<HHI", buffer[pos:pos+8])
             if sig != 0xBBB0:
-                log.error("not the right signature for Timesync header, got 0x{:04X} instead of 0x{:04X}, pos was 0x{:08X}".format(sig, 0x0030BBB0, pos))
+                logger.error("not the right signature for Timesync header, got 0x{:04X} instead of 0x{:04X}, pos was 0x{:08X}".format(sig, 0x0030BBB0, pos))
                 break
             uuid = UUID(bytes=buffer[pos+8:pos+24])
             ts_numer, ts_denom, t_stamp, tz, is_dst = struct.unpack("<IIqiI", buffer[pos+24:pos+48])
             ts_header = TimesyncHeader(sig, unk1, uuid, ts_numer, ts_denom, t_stamp, tz, is_dst)
             pos += header_size # 0x30 (48) by default
             if header_size != 0x30:
-                log.info("Timesync header was 0x{:X} bytes instead of 0x30(48) bytes!".format(size))
-            log.debug("TIMEHEAD {}  0x{:016X}  {} {}".format(uuid, t_stamp, ReadAPFSTime(t_stamp), 'boot'))
+                logger.info("Timesync header was 0x{:X} bytes instead of 0x30(48) bytes!".format(size))
+            logger.debug("TIMEHEAD {}  0x{:016X}  {} {}".format(uuid, t_stamp, ReadAPFSTime(t_stamp), 'boot'))
             #TODO - TEST search ts_list for existing, not seen so far
             existing_ts = None
             for ts in ts_list:
@@ -1680,13 +1679,13 @@ def ReadTimesyncFile(buffer, ts_list):
                 if buffer[pos:pos+4] == b'Ts \x00':
                     ts_unknown, cont_time, t_stamp, bias, is_dst = struct.unpack("<IqqiI", buffer[pos+4:pos+32])
                     ts_obj.items.append(TimesyncItem(ts_unknown, cont_time, t_stamp, bias, is_dst))
-                    log.debug("TIMESYNC {}  0x{:016X}  {} {}".format(uuid, t_stamp, ReadAPFSTime(t_stamp), ts_unknown))
+                    logger.debug("TIMESYNC {}  0x{:016X}  {} {}".format(uuid, t_stamp, ReadAPFSTime(t_stamp), ts_unknown))
                 else:
                     break # break this loop, parse as header
                 pos += 32
     except Exception as ex:
-        log.exception("Exception reading TimesyncFile")
-    
+        logger.exception("Exception reading TimesyncFile")
+
 def ReadTimesyncFolder(path, ts_list, vfs):
     '''Reads files in the timesync folder specified by 'path' and populates ts_list 
        with timesync entries.
@@ -1697,20 +1696,20 @@ def ReadTimesyncFolder(path, ts_list, vfs):
         for entry in sorted(entries): # sort the files by name, so continuous time will be sequential automatically
             if entry.endswith(".timesync"):
                 file_path = vfs.path_join(path, entry)
-                log.debug('Trying to read timesync file {}'.format(file_path))
+                logger.debug('Trying to read timesync file {}'.format(file_path))
                 f = vfs.get_virtual_file(file_path, 'TimeSync').open()
                 if f:
                     buffer = f.read() # should be a fairly small file!
                     ReadTimesyncFile(buffer, ts_list)
                     f.close()
             else:
-                log.error("In Timesync folder, found non-ts file {}".format(entry))
+                logger.error("In Timesync folder, found non-ts file {}".format(entry))
     except Exception:
-        log.exception('')
+        logger.exception('')
 
 def DebugPrintTSRead(ts_list):
     for ts in ts_list:
         h = ts.header
-        log.debug("HEADER = {} {} {} {} {} {}".format(h.uuid, h.flags1, h.flags2, ReadAPFSTime(h.time_stamp), -h.bias/60.0, h.is_dst))
+        logger.debug("HEADER = {} {} {} {} {} {}".format(h.uuid, h.flags1, h.flags2, ReadAPFSTime(h.time_stamp), -h.bias/60.0, h.is_dst))
         for item in ts.items:
-            log.debug('ITEM={} {} {} {} {}'.format(item.ts_unknown, item.continuousTime, ReadAPFSTime(item.time_stamp), -item.bias/60., item.is_dst))
+            logger.debug('ITEM={} {} {} {} {}'.format(item.ts_unknown, item.continuousTime, ReadAPFSTime(item.time_stamp), -item.bias/60., item.is_dst))

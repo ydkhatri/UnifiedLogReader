@@ -6,3 +6,4 @@ recursive-exclude UnifiedLog *.pyc
 # are considered source distribution files and excluded in find_package()
 # in setup.py.
 recursive-include tests *.py
+recursive-include test_data *

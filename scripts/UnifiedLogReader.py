@@ -49,10 +49,11 @@ from UnifiedLog import __version__
 from UnifiedLog import Lib as UnifiedLogLib
 from UnifiedLog import logger
 from UnifiedLog import virtual_file
+from UnifiedLog import virtual_file_system
 
 
 f = None
-vfs = UnifiedLogLib.VirtualFileSystem(virtual_file.VirtualFile)
+vfs = virtual_file_system.VirtualFileSystem(virtual_file.VirtualFile)
 total_logs_processed = 0
 db_conn = None
 

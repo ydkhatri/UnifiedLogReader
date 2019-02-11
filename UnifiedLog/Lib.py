@@ -50,6 +50,7 @@ from uuid import UUID
 import biplist
 import lz4.block
 
+from UnifiedLog import dsc_file
 from UnifiedLog import logger
 from UnifiedLog import resources
 from UnifiedLog import uuidtext_file
@@ -326,7 +327,8 @@ class TraceV3(object):
             # Try as Dsc
             full_path = self.vfs.path_join(self.dsc_folder_path, uuid_string)
             if self.vfs.path_exists(full_path):
-                dsc = Dsc(self.vfs.get_virtual_file(full_path, 'Dsc'))
+                dsc_path = self.vfs.get_virtual_file(full_path, 'Dsc')
+                dsc = dsc_file.Dsc(dsc_path)
                 dsc.Parse()
                 catalog.FileObjects.append(dsc)
             else:
@@ -994,8 +996,10 @@ class TraceV3(object):
                             if has_sp_name:
                                 try:
                                     signpost_name, c_a, c_b = dsc_cache.ReadFmtStringAndEntriesFromVirtualOffset(sp_name_ref)
-                                except:
+                                except (KeyError, IOError):
                                     logger.error("Could not get signpost name! @ 0x{:X} ct={}".format(log_file_pos, ct))
+                                    signpost_name = '<compose failure [UUID]>'
+
                             cache_b1 = dsc_cache.GetUuidEntryFromVirtualOffset(u5)
                             if cache_b1:
                                 lib = cache_b1[4] # senderimage_name
@@ -1009,8 +1013,10 @@ class TraceV3(object):
                                     logger.debug("fmt_str_v_offset highest bit set @ 0x{:X} ct={}".format(log_file_pos, ct))
                                 else:
                                     format_str, cache_a, cache_b = dsc_cache.ReadFmtStringAndEntriesFromVirtualOffset(fmt_str_v_offset)
-                            except:
+                            except (KeyError, IOError):
                                 logger.error('Failed to get DSC msg string @ 0x{:X} ct={}'.format(log_file_pos, ct))
+                                format_str = '<compose failure [UUID]>'
+
                         elif has_alternate_uuid: pass #u2 & 0x0008: # Parsed above
                         else:
                             logger.warning("No message string flags! @ 0x{:X} ct={}".format(log_file_pos, ct))
@@ -1265,7 +1271,8 @@ class CachedFiles(object):
             entries = self.vfs.listdir(dsc_path)
             for dsc_name in entries:
                 if len(dsc_name) == 32:                    
-                    dsc = Dsc(self.vfs.get_virtual_file(self.vfs.path_join(dsc_path, dsc_name), 'Dsc'))
+                    dsc_path = self.vfs.get_virtual_file(self.vfs.path_join(dsc_path, dsc_name), 'Dsc')
+                    dsc = dsc_file.Dsc(dsc_path)
                     dsc.Parse()
                     self.cached_dsc[dsc_name] = dsc
 
@@ -1289,104 +1296,6 @@ class CachedFiles(object):
             #         logger.debug(folder_name + ' does not exist')
         except Exception:
             logger.exception('')
-
-
-class Dsc(object):
-    def __init__(self, v_file):
-        super(Dsc, self).__init__()
-        self.file = v_file
-        self.version = 0
-        self.num_range_entries = 0
-        self.num_uuid_entries = 0
-        self.range_entries = []  # [ [uuid_index, v_off, data_offset, data_len], [..], ..] # data_offset is absolute in file
-        self.uuid_entries  = []  # [ [v_off,  size,  uuid,  lib_path, lib_name], [..], ..] # v_off is virt offset
-
-    def FindVirtualOffsetEntries(self, v_offset):
-        '''Return tuple (range_entry, uuid_entry) where range_entry[xx].size <= v_offset'''
-        ret_range_entry = None
-        ret_uuid_entry = None
-        for a in self.range_entries:
-            if (a[1] <= v_offset) and ((a[1] + a[3]) > v_offset):
-                ret_range_entry = a
-                ret_uuid_entry = self.uuid_entries[a[0]]
-                return (ret_range_entry, ret_uuid_entry)
-        #Not found
-        logger.error('Failed to find v_offset in Dsc!')
-        return (None, None)
-
-    def ReadFmtStringAndEntriesFromVirtualOffset(self, v_offset):
-        range_entry, uuid_entry = self.FindVirtualOffsetEntries(v_offset)
-        if range_entry:
-            rel_offset = v_offset - range_entry[1]
-            f = self.file.file_pointer
-            f.seek(range_entry[2] + rel_offset)
-            buffer = f.read(range_entry[3] - rel_offset)
-            return (ReadCString(buffer), range_entry, uuid_entry)
-        return '<compose failure [UUID]>'
-
-    def GetUuidEntryFromUuid(self, uuid):
-        '''Find a uuid_entry from its UUID value'''
-        for b in self.uuid_entries:
-            if b[2] == uuid:
-                return b
-        #Not found
-        logger.error('Failed to find uuid {} in Dsc!'.format(str(uuid)))
-        return b
-
-    def GetUuidEntryFromVirtualOffset(self, v_offset):
-        '''Returns uuid_entry where uuid_entry[xx].v_off <= v_offset and falls within allowed size'''
-        for b in self.uuid_entries:
-            if (b[0] <= v_offset) and ((b[0] + b[1]) > v_offset):
-                rel_offset = v_offset - b[0]
-                return b
-        #Not found
-        logger.error('Failed to find uuid_entry for v_offset 0x{:X} in Dsc!'.format(v_offset))
-        return None
-
-    def DebugPrintDsc(self):
-        logger.debug("DSC version={} file={}".format(self.version, self.file.filename))
-        logger.debug("Range entry values")
-        for a in self.range_entries:
-            logger.debug("{} {} {} {}".format(a[0], a[1], a[2], a[3]))
-        logger.debug("Uuid entry values")
-        for b in self.uuid_entries:
-            logger.debug("{} {} {} {} {}".format(b[0], b[1], b[2], b[3], b[4]))
-
-    def Parse(self):
-        '''Parse the dsc file, returns True/False'''
-        f = self.file.open()
-        if not f:
-            return False
-        try:
-            buffer = f.read(16) # header
-            if buffer[0:4] != b'hcsd':
-                logger.info('Wrong signature in DSC file, got 0x{} instead of 0x68637364 (hcsd)'.format(binascii.hexlify(buffer[0:4])))
-                return False
-            self.version, self.num_range_entries, self.num_uuid_entries = struct.unpack("<III", buffer[4:16])
-            # Read range structures
-            buffer = f.read(16 * self.num_range_entries)
-            pos = 0
-            for i in range(self.num_range_entries):
-                uuid_index, v_off, data_offset, data_len = struct.unpack("<IIII", buffer[pos:pos+16])
-                self.range_entries.append([uuid_index, v_off, data_offset, data_len])
-                pos += 16
-            # Read uuid_entry structures
-            buffer = f.read(28 * self.num_uuid_entries)
-            pos = 0
-            for i in range(self.num_uuid_entries):
-                v_off, size = struct.unpack("<II", buffer[pos:pos+8])
-                uuid = UUID(bytes=buffer[pos+8:pos+24])
-                data_offset = struct.unpack("<I", buffer[pos+24:pos+28])[0]
-                f.seek(data_offset)
-                path_buffer = f.read(1024) # File path should not be >1024
-                lib_path = ReadCString(path_buffer)
-                lib_name = posixpath.basename(lib_path)
-                self.uuid_entries.append([v_off, size, uuid, lib_path, lib_name])
-                pos += 28
-        except:
-            logger.exception('DSC Parser error')
-            self.file.is_valid = False
-        return True
 
 def GetBootUuidTimeSyncList(ts_list, uuid):
     '''

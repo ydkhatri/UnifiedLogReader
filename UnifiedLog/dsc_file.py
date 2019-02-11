@@ -80,17 +80,6 @@ class Dsc(object):
         cstring = self._ReadCString(cstring_data)
         return cstring, range_entry, uuid_entry
 
-    # TODO: Per https://github.com/ydkhatri/UnifiedLogReader/issues/15 this
-    # method is deprecated remove
-    def GetUuidEntryFromUuid(self, uuid):
-        '''Find a uuid_entry from its UUID value'''
-        for b in self.uuid_entries:
-            if b[2] == uuid:
-                return b
-        #Not found
-        logger.error('Failed to find uuid {} in Dsc!'.format(str(uuid)))
-        return None
-
     def GetUuidEntryFromVirtualOffset(self, v_offset):
         '''Returns uuid_entry where uuid_entry[xx].v_off <= v_offset and falls within allowed size'''
         for b in self.uuid_entries:

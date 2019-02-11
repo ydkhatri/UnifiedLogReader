@@ -1,4 +1,4 @@
-include LICENSE.txt README.md
+include LICENSE.txt README.md requirements.txt
 exclude .gitignore
 exclude *.pyc
 recursive-exclude UnifiedLog *.pyc

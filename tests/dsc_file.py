@@ -16,6 +16,9 @@ from tests import test_lib
 class DscTest(test_lib.BaseTestCase):
     '''Tests for the Shared-Cache strings (dsc) file parser.'''
 
+    # TODO: add tests for _ParseFileObject
+    # TODO: add tests for _ReadCString
+
     def testFindVirtualOffsetEntries(self):
         '''Tests the FindVirtualOffsetEntries function.'''
         path = self._GetTestFilePath(['8E21CAB1DCF936B49F85CF860E6F34EC'])

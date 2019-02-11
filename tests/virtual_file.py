@@ -16,8 +16,8 @@ class VirtualFileTest(test_lib.BaseTestCase):
 
     def testGetFileSize(self):
         '''Tests the get_file_size function.'''
-        path = self._GetTestFilePath(['LICENSE.txt'])
-        file_object = virtual_file.VirtualFile(path, filetype='test')
+        path = self._GetTestFilePath(['0D3C2953A33917B333DD8366AC25F2'])
+        file_object = virtual_file.VirtualFile(path, filetype='uuidtext')
 
         file_object.open()
         try:
@@ -25,7 +25,7 @@ class VirtualFileTest(test_lib.BaseTestCase):
         finally:
              file_object.close()
 
-        self.assertEqual(file_size, 1088)
+        self.assertEqual(file_size, 33)
 
 
 if __name__ == '__main__':

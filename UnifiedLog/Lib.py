@@ -51,6 +51,7 @@ import biplist
 import lz4.block
 
 from UnifiedLog import logger
+from UnifiedLog import resources
 from UnifiedLog import uuidtext_file
 
 
@@ -233,73 +234,6 @@ def DecompressChunkData(chunk_data, data_len):
         logger.error('Unknown compression type {}'.format(binascii.hexlify(chunk_data[16:20])))
     return uncompressed
 
-class ExtraFileReference(object):
-    '''Extra file reference object. Some ProcInfos have messages in more than one uuidtext file'''
-    def __init__(self, data_size, uuid_file_index, u2, v_offset, id):
-        super(ExtraFileReference, self).__init__()
-        self.data_size = data_size # data size
-        self.uuid_file_index = uuid_file_index
-        self.unknown2 = u2
-        self.v_offset = v_offset # virtual offset
-        self.id = id
-
-class ProcInfo(object):
-    def __init__(self, id, flags, uuid_file_index, dsc_file_index, proc_id1, proc_id2, pid, euid, u6, num_extra_uuid_refs, u8, num_subsys_cat_elements, u9, extra_file_refs):
-        super(ProcInfo, self).__init__()
-        self.id = id
-        self.flags = flags
-        self.uuid_file_index = uuid_file_index
-        self.dsc_file_index = dsc_file_index
-        self.proc_id1 = proc_id1 # usually same as pid (but not always!)
-        self.proc_id2 = proc_id2 # secondary pid like unique value for getting unique entries when 2 proc_info have same pid
-        self.pid = pid
-        self.euid = euid
-        self.unk_val6 = u6
-        self.num_extra_uuid_refs = num_extra_uuid_refs
-        self.unk_val8 = u8
-        self.num_subsys_cat_elements = num_subsys_cat_elements
-        self.unk_val9 = u9
-
-        self.items = {}    #  key = item_id, val = (subsystem, category)
-        self.extra_file_refs = extra_file_refs # In addition to self.uuid_file_index
-
-    def GetSubSystemAndCategory(self, sc_id):
-        sc = self.items.get(sc_id, None)
-        if sc:
-            return (sc[0], sc[1])
-        # Not found!
-        logger.error("Could not find subsystem_category_id={}".format(sc_id))
-        return ('','')
-
-class ChunkMeta(object):
-    def __init__(self, continuous_time_first, continuous_time_last,chunk_len, compression_alg):
-        super(ChunkMeta, self).__init__()
-        self.continuous_time_first = continuous_time_first
-        self.continuous_time_last = continuous_time_last
-        self.length_of_chunk = chunk_len # Chunk to follow
-        self.compression_alg = compression_alg # 0x100 (256) = lz4
-        self.ProcInfo_Ids = []
-        self.StringIndexes = []
-        self.ProcInfos = {}   # key = pid
-        self.Strings = {} # key = string offset
-
-class Catalog(object):
-    def __init__(self):
-        super(Catalog, self).__init__()
-        self.ContinuousTime = 0
-        self.FileObjects = []
-        self.Strings = ''
-        self.ProcInfos = []
-        self.ChunkMetaInfo = []
-
-    def GetProcInfoById(self, id):
-        for proc_info in self.ProcInfos:
-            if proc_info.id == id:
-                return proc_info
-        # Not found!
-        logger.error("ProcInfo with id={} not found".format(id))
-        return None
-
 class TraceV3(object):
     def __init__(self, v_fs, v_file, ts_list, uuidtext_folder_path, cached_files=None):
         '''
@@ -410,7 +344,7 @@ class TraceV3(object):
         '''Read chunk with flag 0x600B, this contains metadata/catalog data'''
         len_buffer = len(buffer)
         pos = 0
-        catalog = Catalog()
+        catalog = resources.Catalog()
         offset_strings, offset_proc_info, num_proc_info_to_follow, offset_chunk_meta, num_chunks_to_follow, \
           self.ContinuousTime = struct.unpack("<HHHHQQ", buffer[0:24])
         pos = 24
@@ -432,12 +366,13 @@ class TraceV3(object):
                 # If more than one file is referenced by this proc_info, then this section is present
                 for j in range(num_extra_uuid_refs):
                     ref_data_size, ref_u2, uuid_file_index, ref_v_offset, ref_id = struct.unpack('<IIhIh', buffer[pos:pos+16])
-                    extra_file_refs.append(ExtraFileReference(ref_data_size, uuid_file_index, ref_u2, ref_v_offset, ref_id))
+                    file_reference = resources.ExtraFileReference(ref_data_size, uuid_file_index, ref_u2, ref_v_offset, ref_id)
+                    extra_file_refs.append(file_reference)
                     pos += 16
                     # sometimes uuid_file_index is -ve, 0xFF7F (-129)
             num_subsys_cat_elements, u9 = struct.unpack("<II", buffer[pos:pos+8])
             pos += 8
-            proc_info = ProcInfo(id, flags, file_id, dsc_file_index, proc_id1, proc_id2, pid, euid, u6, num_extra_uuid_refs, u8, num_subsys_cat_elements, u9, extra_file_refs)
+            proc_info = resources.ProcInfo(id, flags, file_id, dsc_file_index, proc_id1, proc_id2, pid, euid, u6, num_extra_uuid_refs, u8, num_subsys_cat_elements, u9, extra_file_refs)
             catalog.ProcInfos.append(proc_info)
             if num_subsys_cat_elements > 0:
                 for item_index in range(num_subsys_cat_elements):
@@ -457,7 +392,7 @@ class TraceV3(object):
             pos += 24
             self.DebugPrintTimestampFromContTime(c_time_first, "ChunkMeta {} CTime First".format(i))
             self.DebugPrintTimestampFromContTime(c_time_last, "ChunkMeta {} CTime Last".format(i))
-            chunk_meta = ChunkMeta(c_time_first, c_time_last, chunk_len, compression_alg)
+            chunk_meta = resources.ChunkMeta(c_time_first, c_time_last, chunk_len, compression_alg)
             catalog.ChunkMetaInfo.append(chunk_meta)
             num_proc_info_indexes = struct.unpack('<I', buffer[pos:pos+4])[0]
             pos += 4
@@ -1486,37 +1421,6 @@ def FindClosestTimesyncItemInList(ts_items, continuousTime):
             closest_tsi = item
     return closest_tsi
 
-class Timesync(object):
-    def __init__(self, header):
-        super(Timesync, self).__init__()
-        self.header = header
-        self.items = []
-        #self.items_dict = {} # unused , use later for optimization
-
-class TimesyncHeader(object):
-
-    def __init__(self, sig, unk1, boot_uuid, ts_numer, ts_denom, ts, bias, is_dst):
-        super(TimesyncHeader, self).__init__()
-        self.signature = sig
-        self.unknown1  = unk1
-        self.boot_uuid = boot_uuid
-        self.ts_numerator   = ts_numer
-        self.ts_denominator = ts_denom
-        self.time_stamp = ts
-        self.bias_minutes   = bias
-        self.is_dst = (is_dst == 1) # 1 = DST
-
-class TimesyncItem(object):
-    '''Timesync item object'''
-    def __init__(self, ts_unknown, cont_time, ts, bias, is_dst):
-        super(TimesyncItem, self).__init__()
-        #self.signature = sig # "Ts  " = sig?
-        self.ts_unknown = ts_unknown
-        self.continuousTime = cont_time
-        self.time_stamp = ts
-        self.bias_minutes = bias
-        self.is_dst = (is_dst == 1) # 1 = DST
-
 def ReadTimesyncFile(buffer, ts_list):
     try:
         pos = 0
@@ -1528,7 +1432,7 @@ def ReadTimesyncFile(buffer, ts_list):
                 break
             uuid = UUID(bytes=buffer[pos+8:pos+24])
             ts_numer, ts_denom, t_stamp, tz, is_dst = struct.unpack("<IIqiI", buffer[pos+24:pos+48])
-            ts_header = TimesyncHeader(sig, unk1, uuid, ts_numer, ts_denom, t_stamp, tz, is_dst)
+            ts_header = resources.TimesyncHeader(sig, unk1, uuid, ts_numer, ts_denom, t_stamp, tz, is_dst)
             pos += header_size # 0x30 (48) by default
             if header_size != 0x30:
                 logger.info("Timesync header was 0x{:X} bytes instead of 0x30(48) bytes!".format(size))
@@ -1542,14 +1446,16 @@ def ReadTimesyncFile(buffer, ts_list):
             if existing_ts:
                 ts_obj = existing_ts
             else:
-                ts_obj = Timesync(ts_header)
+                ts_obj = resouces.Timesync(ts_header)
                 ts_list.append(ts_obj)
                 # Adding header timestamp as Ts type too with cont_time = 0
-                ts_obj.items.append(TimesyncItem(0, 0, t_stamp, tz, is_dst))
+                timesync_item = resources.TimesyncItem(0, 0, t_stamp, tz, is_dst)
+                ts_obj.items.append(timesync_itme)
             while pos < size:
                 if buffer[pos:pos+4] == b'Ts \x00':
                     ts_unknown, cont_time, t_stamp, bias, is_dst = struct.unpack("<IqqiI", buffer[pos+4:pos+32])
-                    ts_obj.items.append(TimesyncItem(ts_unknown, cont_time, t_stamp, bias, is_dst))
+                    timesync_item = resources.TimesyncItem(ts_unknown, cont_time, t_stamp, bias, is_dst)
+                    ts_obj.items.append(timesync_item)
                     logger.debug("TIMESYNC {}  0x{:016X}  {} {}".format(uuid, t_stamp, ReadAPFSTime(t_stamp), ts_unknown))
                 else:
                     break # break this loop, parse as header

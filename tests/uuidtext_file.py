@@ -20,11 +20,11 @@ class UuidtextTest(test_lib.BaseTestCase):
     def testParse(self):
         '''Tests the Parse function.'''
         path = self._GetTestFilePath(['0D3C2953A33917B333DD8366AC25F2'])
-        file_object = virtual_file.VirtualFile(path, filetype='uuidtext')
+        file_entry = virtual_file.VirtualFile(path, filetype='uuidtext')
 
         uuid_object = uuid.UUID('{220D3C29-53A3-3917-B333-DD8366AC25F2}')
-        uuidtext = uuidtext_file.Uuidtext(file_object, uuid_object)
-        uuidtext.Parse()
+        test_file = uuidtext_file.Uuidtext(file_entry, uuid_object)
+        test_file.Parse()
 
 
 if __name__ == '__main__':

@@ -35,10 +35,13 @@ class VirtualFileSystemTests(test_lib.BaseTestCase):
         file_system = virtual_file_system.VirtualFileSystem(
             virtual_file.VirtualFile)
 
-        expected_directory_entries = ['0D3C2953A33917B333DD8366AC25F2']
+        expected_directory_entries = [
+            '0D3C2953A33917B333DD8366AC25F2',
+            '8E21CAB1DCF936B49F85CF860E6F34EC']
+
         directory_entries = file_system.listdir(self._TEST_DATA_PATH)
-        self.assertEqual(len(directory_entries), 1)
-        self.assertEqual(directory_entries, expected_directory_entries)
+        self.assertEqual(len(directory_entries), 2)
+        self.assertEqual(sorted(directory_entries), expected_directory_entries)
 
     def testIsDir(self):
         '''Tests the is_dir function.'''

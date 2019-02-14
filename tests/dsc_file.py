@@ -61,27 +61,6 @@ class DscTest(test_lib.BaseTestCase):
         with self.assertRaises(KeyError):
             test_file.ReadFmtStringAndEntriesFromVirtualOffset(0xffffffff)
 
-    def testGetUuidEntryFromUuid(self):
-        '''Tests the GetUuidEntryFromUuid function.'''
-        path = self._GetTestFilePath(['8E21CAB1DCF936B49F85CF860E6F34EC'])
-        file_object = virtual_file.VirtualFile(path, filetype='dsc')
-
-        test_file = dsc_file.Dsc(file_object)
-
-        test_uuid_entry = test_file.GetUuidEntryFromUuid(
-            uuid.UUID('4db84124-d5a9-3412-b501-0d8a68000000'))
-        self.assertIsNone(test_uuid_entry)
-
-        self.assertTrue(test_file.Parse())
-
-        test_uuid_entry = test_file.GetUuidEntryFromUuid(
-            uuid.UUID('4db84124-d5a9-3412-b501-0d8a68000000'))
-        self.assertIsNotNone(test_uuid_entry)
-
-        test_uuid_entry = test_file.GetUuidEntryFromUuid(
-            uuid.UUID('ffffffff-ffff-ffff-ffff-ffffffffffff'))
-        self.assertIsNone(test_uuid_entry)
-
     def testGetUuidEntryFromVirtualOffset(self):
         '''Tests the GetUuidEntryFromVirtualOffset function.'''
         path = self._GetTestFilePath(['8E21CAB1DCF936B49F85CF860E6F34EC'])

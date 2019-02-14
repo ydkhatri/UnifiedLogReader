@@ -21,6 +21,58 @@ class Dsc(object):
         self.range_entries = []  # [ [uuid_index, v_off, data_offset, data_len], [..], ..] # data_offset is absolute in file
         self.uuid_entries  = []  # [ [v_off,  size,  uuid,  lib_path, lib_name], [..], ..] # v_off is virt offset
 
+    def _ParseFileObject(self, file_object):
+        '''Parses a dsc file-like object.
+
+        Args:
+          file_object (file): file-like object.
+
+        Returns:
+          bool: True if the dsc file-like object was successfully parsed,
+              False otherwise.
+
+        Raises:
+          IOError: if the dsc file cannot be parsed.
+          OSError: if the dsc file cannot be parsed.
+          struct.error: if the dsc file cannot be parsed.
+        '''
+        file_header_data = file_object.read(16)
+        if file_header_data[0:4] != b'hcsd':
+            signature_base16 = binascii.hexlify(file_header_data[0:4])
+            logger.info((
+                'Wrong signature in DSC file, got 0x{} instead of 0x68637364 '
+                '(hcsd)').format(signature_base16))
+            return False
+
+        self.version, self.num_range_entries, self.num_uuid_entries = (
+            struct.unpack("<III", file_header_data[4:16]))
+
+        while len(self.range_entries) < self.num_range_entries:
+            range_entry_data = file_object.read(16)
+
+            uuid_index, v_off, data_offset, data_len = struct.unpack(
+                "<IIII", range_entry_data)
+            range_entry = [uuid_index, v_off, data_offset, data_len]
+            self.range_entries.append(range_entry)
+
+        uuid_entry_offset = file_object.tell()
+        while len(self.uuid_entries) < self.num_uuid_entries:
+            file_object.seek(uuid_entry_offset, os.SEEK_SET)
+            uuid_entry_data = file_object.read(28)
+
+            v_off, size = struct.unpack("<II", uuid_entry_data[:8])
+            uuid_object = uuid.UUID(bytes=uuid_entry_data[8:24])
+            data_offset = struct.unpack("<I", uuid_entry_data[24:])[0]
+
+            file_object.seek(data_offset, os.SEEK_SET)
+            path_data = file_object.read(1024) # File path should not be >1024
+
+            lib_path = self._ReadCString(path_data)
+            lib_name = posixpath.basename(lib_path)
+            self.uuid_entries.append([v_off, size, uuid_object, lib_path, lib_name])
+
+        return True
+
     # TODO: move this into a shared DataFormat class.
     def _ReadCString(self, data, max_len=1024):
         '''Returns a C utf8 string (excluding terminating null)'''
@@ -100,37 +152,26 @@ class Dsc(object):
             logger.debug("{} {} {} {} {}".format(b[0], b[1], b[2], b[3], b[4]))
 
     def Parse(self):
-        '''Parse the dsc file, returns True/False'''
-        f = self.file.open()
-        if not f:
-            return False
+        '''Parses a dsc file.
+
+        self.file.is_valid is set to False if this method encounters issues
+        parsing the file.
+
+        Returns:
+          bool: True if the dsc file-like object was successfully parsed,
+              False otherwise.
+        '''
+        file_object = self.file.open()
+        if not file_object:
+          return False
+
         try:
-            buffer = f.read(16) # header
-            if buffer[0:4] != b'hcsd':
-                logger.info('Wrong signature in DSC file, got 0x{} instead of 0x68637364 (hcsd)'.format(binascii.hexlify(buffer[0:4])))
-                return False
-            self.version, self.num_range_entries, self.num_uuid_entries = struct.unpack("<III", buffer[4:16])
-            # Read range structures
-            buffer = f.read(16 * self.num_range_entries)
-            pos = 0
-            for i in range(self.num_range_entries):
-                uuid_index, v_off, data_offset, data_len = struct.unpack("<IIII", buffer[pos:pos+16])
-                self.range_entries.append([uuid_index, v_off, data_offset, data_len])
-                pos += 16
-            # Read uuid_entry structures
-            buffer = f.read(28 * self.num_uuid_entries)
-            pos = 0
-            for i in range(self.num_uuid_entries):
-                v_off, size = struct.unpack("<II", buffer[pos:pos+8])
-                uuid_object = uuid.UUID(bytes=buffer[pos+8:pos+24])
-                data_offset = struct.unpack("<I", buffer[pos+24:pos+28])[0]
-                f.seek(data_offset)
-                path_buffer = f.read(1024) # File path should not be >1024
-                lib_path = self._ReadCString(path_buffer)
-                lib_name = posixpath.basename(lib_path)
-                self.uuid_entries.append([v_off, size, uuid_object, lib_path, lib_name])
-                pos += 28
+            result = self._ParseFileObject(file_object)
         except (IOError, OSError, struct.error):
             logger.exception('DSC Parser error')
+            result = False
+
+        if not result:
             self.file.is_valid = False
-        return True
+
+        return result

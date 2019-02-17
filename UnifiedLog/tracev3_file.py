@@ -300,79 +300,154 @@ class TraceV3(object):
         except:
             logger.exception('')
 
-    def ProcessMetaChunk(self, buffer, debug_file_pos):
-        '''Read chunk with flag 0x600B, this contains metadata/catalog data'''
-        len_buffer = len(buffer)
-        pos = 0
+    def ProcessMetaChunk(self, chunk_data):
+        '''Parses a catalog chunk data.
+
+        The catalog chunk is a chunk with tag 0x600b.
+
+        Args:
+          chunk_data (bytes): catalog chunk data.
+
+        Returns:
+          Catalog: a catalog.
+
+        Raises:
+          struct.error: if the catalog chunk data cannot be parsed.
+        '''
         catalog = resources.Catalog()
-        offset_strings, offset_proc_info, num_proc_info_to_follow, offset_chunk_meta, num_chunks_to_follow, \
-          self.ContinuousTime = struct.unpack("<HHHHQQ", buffer[0:24])
-        pos = 24
-        self.DebugPrintTimestampFromContTime(self.ContinuousTime, "Catalog Chunk")
-        for i in range(offset_strings/16):
-            file_path = binascii.hexlify(buffer[pos:pos+16]).upper()
+
+        (subsystem_strings_offset, proc_infos_offset, number_of_proc_infos,
+         chunk_meta_offset, num_chunks_to_follow, self.ContinuousTime) = (
+            struct.unpack('<HHHHQQ', chunk_data[0:24]))
+
+        subsystem_strings_offset += 24
+        proc_infos_offset += 24
+        chunk_meta_offset += 24
+
+        self.DebugPrintTimestampFromContTime(self.ContinuousTime, 'Catalog Chunk')
+
+        data_offset = 24
+        data_size = len(chunk_data)
+
+        while data_offset < subsystem_strings_offset:
+            end_data_offset = data_offset + 16
+
+            file_path_data = chunk_data[data_offset:end_data_offset]
+            data_offset = end_data_offset
+
+            file_path = binascii.hexlify(file_path_data)
+            file_path = file_path.upper()
+
             self.ProcessReferencedFile(file_path, catalog)
-            pos += 16
-        pos = offset_strings + 24 # should already be here after reading filesUsed
-        catalog.Strings = buffer[pos : pos + offset_proc_info - offset_strings]
-        # ProcInfos
-        pos = 24 + offset_proc_info
-        for i in range(num_proc_info_to_follow):
-            id, flags, file_id, dsc_file_index, proc_id1, proc_id2, pid, euid, \
-            u6, num_extra_uuid_refs, u8 = struct.unpack("<HHhhQIIIIII", buffer[pos:pos+40])
-            pos += 40
+
+        catalog.Strings = chunk_data[data_offset:proc_infos_offset]
+        data_offset = proc_infos_offset
+
+        while data_offset < chunk_meta_offset:
+            end_data_offset = data_offset + 40
+
+            (id, flags, file_id, dsc_file_index, proc_id1, proc_id2, pid, euid,
+             u6, num_extra_uuid_refs, u8) = struct.unpack(
+                '<HHhhQIIIIII', chunk_data[data_offset:end_data_offset])
+            data_offset = end_data_offset
+
+            # UUID info entries are present if the process info references files.
             extra_file_refs = []
-            if num_extra_uuid_refs:
-                # If more than one file is referenced by this proc_info, then this section is present
-                for j in range(num_extra_uuid_refs):
-                    ref_data_size, ref_u2, uuid_file_index, ref_v_offset, ref_id = struct.unpack('<IIhIh', buffer[pos:pos+16])
-                    file_reference = resources.ExtraFileReference(ref_data_size, uuid_file_index, ref_u2, ref_v_offset, ref_id)
-                    extra_file_refs.append(file_reference)
-                    pos += 16
-                    # sometimes uuid_file_index is -ve, 0xFF7F (-129)
-            num_subsys_cat_elements, u9 = struct.unpack("<II", buffer[pos:pos+8])
-            pos += 8
-            proc_info = resources.ProcInfo(id, flags, file_id, dsc_file_index, proc_id1, proc_id2, pid, euid, u6, num_extra_uuid_refs, u8, num_subsys_cat_elements, u9, extra_file_refs)
+
+            uuid_infos_end_offset = data_offset + (16 * num_extra_uuid_refs)
+            while data_offset < uuid_infos_end_offset:
+                end_data_offset = data_offset + 16
+
+                (ref_data_size, ref_u2, uuid_file_index, ref_v_offset,
+                 ref_id) = struct.unpack(
+                    '<IIhIh', chunk_data[data_offset:end_data_offset])
+                data_offset = end_data_offset
+
+                # sometimes uuid_file_index is -ve, 0xFF7F (-129)
+                file_reference = resources.ExtraFileReference(
+                    ref_data_size, uuid_file_index, ref_u2, ref_v_offset, ref_id)
+                extra_file_refs.append(file_reference)
+
+            end_data_offset = data_offset + 8
+
+            num_subsys_cat_elements, u9 = struct.unpack(
+                '<II', chunk_data[data_offset:end_data_offset])
+            data_offset = end_data_offset
+
+            proc_info = resources.ProcInfo(
+                id, flags, file_id, dsc_file_index, proc_id1, proc_id2, pid,
+                euid, u6, num_extra_uuid_refs, u8, num_subsys_cat_elements,
+                u9, extra_file_refs)
             catalog.ProcInfos.append(proc_info)
-            if num_subsys_cat_elements > 0:
-                for item_index in range(num_subsys_cat_elements):
-                    item_id, subsystem_offset, category_offset = struct.unpack("<HHH", buffer[pos:pos+6])
-                    pos += 6
-                    subsystem_string = self._ReadCString(catalog.Strings[subsystem_offset:])
-                    category_string = self._ReadCString(catalog.Strings[category_offset:])
-                    proc_info.items[item_id] = (subsystem_string, category_string)
-                #padding
-                byte_count = num_subsys_cat_elements * 6
-                if byte_count < 8:
-                    pos += (8 - byte_count)
-                elif (byte_count % 8) > 0:
-                    pos += 8 - (byte_count % 8)
-        #ChunkMeta header
-        pos = 24 + offset_chunk_meta
-        for i in range(num_chunks_to_follow):
-            c_time_first, c_time_last, chunk_len, compression_alg = struct.unpack('<QQII', buffer[pos:pos+24])
-            pos += 24
-            self.DebugPrintTimestampFromContTime(c_time_first, "ChunkMeta {} CTime First".format(i))
-            self.DebugPrintTimestampFromContTime(c_time_last, "ChunkMeta {} CTime Last".format(i))
+
+            sub_systems_end_offset = data_offset + (6 * num_subsys_cat_elements)
+            while data_offset < sub_systems_end_offset:
+                end_data_offset = data_offset + 6
+
+                item_id, subsystem_offset, category_offset = struct.unpack(
+                    '<HHH', chunk_data[data_offset:end_data_offset])
+                data_offset = end_data_offset
+
+                subsystem_string = self._ReadCString(catalog.Strings[subsystem_offset:])
+                category_string = self._ReadCString(catalog.Strings[category_offset:])
+                proc_info.items[item_id] = (subsystem_string, category_string)
+
+            # Skip 64-bit alignment padding.
+            _, remainder = divmod(sub_systems_end_offset, 8)
+            if remainder > 0:
+              data_offset += 8 - remainder
+
+        chunk_index = 0
+        while data_offset < data_size:
+            end_data_offset = data_offset + 24
+            c_time_first, c_time_last, chunk_len, compression_alg = struct.unpack(
+                '<QQII', chunk_data[data_offset:end_data_offset])
+            data_offset = end_data_offset
+
+            self.DebugPrintTimestampFromContTime(
+                c_time_first, 'ChunkMeta {0:d} CTime First'.format(chunk_index))
+            self.DebugPrintTimestampFromContTime(
+                c_time_last, 'ChunkMeta {0:d} CTime Last'.format(chunk_index))
+
             chunk_meta = resources.ChunkMeta(c_time_first, c_time_last, chunk_len, compression_alg)
             catalog.ChunkMetaInfo.append(chunk_meta)
-            num_proc_info_indexes = struct.unpack('<I', buffer[pos:pos+4])[0]
-            pos += 4
-            chunk_meta.ProcInfo_Ids = struct.unpack('<{}H'.format(num_proc_info_indexes), buffer[pos:pos + (num_proc_info_indexes*2)])
-            pos += num_proc_info_indexes*2
+
+            end_data_offset = data_offset + 4
+            num_proc_info_indexes = struct.unpack(
+                '<I', chunk_data[data_offset:end_data_offset])[0]
+            data_offset = end_data_offset
+
+            end_data_offset = data_offset + (num_proc_info_indexes * 2)
+            format_string = '<{0:d}H'.format(num_proc_info_indexes)
+            chunk_meta.ProcInfo_Ids = struct.unpack(
+                format_string, chunk_data[data_offset:end_data_offset])
+            data_offset = end_data_offset
+
             for proc_info_id in chunk_meta.ProcInfo_Ids:
                 # Find it in catalog.ProcInfos and insert ref in chunk_meta.ProcInfos
                 #  ref is unique by using both proc_id1 and proc_id2 
                 proc_info = catalog.GetProcInfoById(proc_info_id)
                 if proc_info:    
                     chunk_meta.ProcInfos[ proc_info.proc_id2 | (proc_info.proc_id1 << 32) ] = proc_info
-            num_string_indexes = struct.unpack('<I', buffer[pos:pos+4])[0]
-            pos += 4
-            chunk_meta.StringIndexes = struct.unpack('<{}H'.format(num_string_indexes), buffer[pos:pos + (num_string_indexes*2)])
-            pos += num_string_indexes*2
-            #padding
-            if (pos % 8) != 0:
-                pos += (8 - (pos % 8))
+
+            end_data_offset = data_offset + 4
+            num_string_indexes = struct.unpack(
+                '<I', chunk_data[data_offset:end_data_offset])[0]
+            data_offset = end_data_offset
+
+            end_data_offset = data_offset + (num_string_indexes * 2)
+            format_string = '<{0:d}H'.format(num_string_indexes)
+            chunk_meta.StringIndexes = struct.unpack(
+                format_string, chunk_data[data_offset:end_data_offset])
+            data_offset = end_data_offset
+
+            chunk_index += 1
+
+            # Skip 64-bit alignment padding.
+            _, remainder = divmod(sub_systems_end_offset, 8)
+            if remainder > 0:
+              data_offset += 8 - remainder
+
         return catalog
 
     def ReadLogDataBuffer2(self, buffer, buf_size, strings_buffer):
@@ -1187,7 +1262,7 @@ class TraceV3(object):
                 # Process buffer here
                 if tag == 0x600B:
                     meta_chunk_index = 0
-                    catalog = self.ProcessMetaChunk(buffer, uncompressed_file_pos + 16) # debug_file_pos will be for uncompressed tracev3 only!
+                    catalog = self.ProcessMetaChunk(buffer)
                     uncompressed_file_pos += 16 + data_length
                 elif tag == 0x600D:
                     uncompressed_buffer = self._DecompressChunkData(buffer, len(buffer))

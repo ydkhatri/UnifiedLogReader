@@ -88,12 +88,20 @@ class TraceV3Test(test_lib.BaseTestCase):
         file_entry, test_file = self._CreateTestFile()
 
         with file_entry.open() as file_object:
-            file_object.read(224)
-            file_header_data = file_object.read(184)
+            file_object.read(240)
+            chunk_data = file_object.read(184)
 
-        # TODO: this currenlty causes memory usage to spike to the point
-        # of swap.
-        # test_file.ProcessMetaChunk(file_header_data, 224)
+        catalog = test_file.ProcessMetaChunk(chunk_data)
+        self.assertIsNotNone(catalog)
+        self.assertEqual(catalog.ContinuousTime, 0)
+        self.assertEqual(len(catalog.FileObjects), 0)
+
+        expected_strings = (
+            b'com.apple.AssetCache\x00builtin\x00\x00\x00\x00')
+        self.assertEqual(catalog.Strings, expected_strings)
+
+        self.assertEqual(len(catalog.ProcInfos), 1)
+        self.assertEqual(len(catalog.ChunkMetaInfo), 1)
 
     # TODO: add tests for ReadLogDataBuffer2
     # TODO: add tests for ReadLogDataBuffer

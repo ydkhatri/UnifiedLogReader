@@ -33,15 +33,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from __future__ import print_function
 from __future__ import unicode_literals
 
 import binascii
 import datetime
 import os
-import posixpath
 import struct
-import time
 import uuid
 
 import lz4.block
@@ -49,8 +46,6 @@ import lz4.block
 from UnifiedLog import dsc_file
 from UnifiedLog import logger
 from UnifiedLog import resources
-from UnifiedLog import tracev3_file
-from UnifiedLog import uuidtext_file
 
 
 # FORMAT
@@ -243,10 +238,3 @@ def ReadTimesyncFolder(path, ts_list, vfs):
                 logger.error("In Timesync folder, found non-ts file {}".format(entry))
     except Exception:
         logger.exception('')
-
-def DebugPrintTSRead(ts_list):
-    for ts in ts_list:
-        h = ts.header
-        logger.debug("HEADER = {} {} {} {} {} {}".format(h.uuid, h.flags1, h.flags2, ReadAPFSTime(h.time_stamp), -h.bias/60.0, h.is_dst))
-        for item in ts.items:
-            logger.debug('ITEM={} {} {} {} {}'.format(item.ts_unknown, item.continuousTime, ReadAPFSTime(item.time_stamp), -item.bias/60., item.is_dst))

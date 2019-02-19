@@ -57,9 +57,6 @@ class TraceV3Test(test_lib.BaseTestCase):
     # TODO: add tests for _GetBootUuidTimeSyncList
     # TODO: add tests for _FindClosestTimesyncItem
     # TODO: add tests for _FindClosestTimesyncItemInList
-    # TODO: add tests for _ReadCString
-    # TODO: add tests for _ReadCStringAndEndPos
-    # TODO: add tests for _ReadNtSid
     # TODO: add tests for _Read_CLClientManagerStateTrackerState
 
     def testParseChunkHeader(self):

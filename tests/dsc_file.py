@@ -16,8 +16,19 @@ from tests import test_lib
 class DscTest(test_lib.BaseTestCase):
     '''Tests for the Shared-Cache strings (dsc) file parser.'''
 
-    # TODO: add tests for _ParseFileObject
-    # TODO: add tests for _ReadCString
+    def testParseFileObject(self):
+        '''Tests the _ParseFileObject function.'''
+        path = self._GetTestFilePath(['8E21CAB1DCF936B49F85CF860E6F34EC'])
+        file_entry = virtual_file.VirtualFile(path, filetype='dsc')
+
+        test_file = dsc_file.Dsc(file_entry)
+
+        with open(path, 'rb') as file_object:
+          self.assertTrue(test_file._ParseFileObject(file_object))
+
+        self.assertTrue(test_file._file.is_valid)
+        self.assertEqual(len(test_file.range_entries), 1)
+        self.assertEqual(len(test_file.uuid_entries), 1)
 
     def testFindVirtualOffsetEntries(self):
         '''Tests the FindVirtualOffsetEntries function.'''
@@ -100,11 +111,9 @@ class DscTest(test_lib.BaseTestCase):
 
         self.assertTrue(test_file.Parse())
 
-        self.assertTrue(test_file.file.is_valid)
+        self.assertTrue(test_file._file.is_valid)
         self.assertEqual(len(test_file.range_entries), 1)
         self.assertEqual(len(test_file.uuid_entries), 1)
-
-        # TODO: fix https://github.com/ydkhatri/UnifiedLogReader/issues/16
 
 
 if __name__ == '__main__':

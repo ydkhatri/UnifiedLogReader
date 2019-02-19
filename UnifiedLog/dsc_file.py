@@ -8,16 +8,27 @@ import posixpath
 import struct
 import uuid
 
+from UnifiedLog import data_format
 from UnifiedLog import logger
 
 
-class Dsc(object):
+class Dsc(data_format.BinaryDataFormat):
+    '''Shared-Cache strings (dsc) file parser.
+
+    Attributes:
+      range_entries (list[tuple[int, int, int, int]]): range entries.
+      uuid_entries (list[tuple[int, int, uuid.UUID, str, str]]): UUID entries.
+    '''
+
     def __init__(self, v_file):
+        '''Initializes a shared-Cache strings (dsc) file parser.
+
+        Args:
+          v_file (VirtualFile): a virtual file.
+        '''
         super(Dsc, self).__init__()
-        self.file = v_file
-        self.version = 0
-        self.num_range_entries = 0
-        self.num_uuid_entries = 0
+        self._file = v_file
+        self._format_version = None
         self.range_entries = []  # [ [uuid_index, v_off, data_offset, data_len], [..], ..] # data_offset is absolute in file
         self.uuid_entries  = []  # [ [v_off,  size,  uuid,  lib_path, lib_name], [..], ..] # v_off is virt offset
 
@@ -44,10 +55,12 @@ class Dsc(object):
                 '(hcsd)').format(signature_base16))
             return False
 
-        self.version, self.num_range_entries, self.num_uuid_entries = (
-            struct.unpack("<III", file_header_data[4:16]))
+        major_version, minor_version, num_range_entries, num_uuid_entries = (
+            struct.unpack("<HHII", file_header_data[4:16]))
 
-        while len(self.range_entries) < self.num_range_entries:
+        self._format_version = '{0:d}.{1:d}'.format(major_version, minor_version)
+
+        while len(self.range_entries) < num_range_entries:
             range_entry_data = file_object.read(16)
 
             uuid_index, v_off, data_offset, data_len = struct.unpack(
@@ -56,7 +69,7 @@ class Dsc(object):
             self.range_entries.append(range_entry)
 
         uuid_entry_offset = file_object.tell()
-        while len(self.uuid_entries) < self.num_uuid_entries:
+        while len(self.uuid_entries) < num_uuid_entries:
             file_object.seek(uuid_entry_offset, os.SEEK_SET)
             uuid_entry_data = file_object.read(28)
 
@@ -72,24 +85,6 @@ class Dsc(object):
             self.uuid_entries.append([v_off, size, uuid_object, lib_path, lib_name])
 
         return True
-
-    # TODO: move this into a shared DataFormat class.
-    def _ReadCString(self, data, max_len=1024):
-        '''Returns a C utf8 string (excluding terminating null)'''
-        pos = 0
-        max_len = min(len(data), max_len)
-        string = ''
-        try:
-            null_pos = data.find(b'\x00', 0, max_len)
-            if null_pos == -1:
-                logger.warning("Possible corrupted string encountered")
-                string = data.decode('utf8')
-            else:
-                string = data[0:null_pos].decode('utf8')
-        except:
-            logger.exception('Error reading C-String')
-
-        return string
 
     def FindVirtualOffsetEntries(self, v_offset):
         '''Return tuple (range_entry, uuid_entry) where range_entry[xx].size <= v_offset'''
@@ -126,9 +121,9 @@ class Dsc(object):
                 v_offset))
 
         rel_offset = v_offset - range_entry[1]
-        f = self.file.file_pointer
-        f.seek(range_entry[2] + rel_offset)
-        cstring_data = f.read(range_entry[3] - rel_offset)
+        file_object = self._file.file_pointer
+        file_object.seek(range_entry[2] + rel_offset)
+        cstring_data = file_object.read(range_entry[3] - rel_offset)
         cstring = self._ReadCString(cstring_data)
         return cstring, range_entry, uuid_entry
 
@@ -143,25 +138,31 @@ class Dsc(object):
         return None
 
     def DebugPrintDsc(self):
-        logger.debug("DSC version={} file={}".format(self.version, self.file.filename))
+        logger.debug("DSC version={0:s} file={1:s}".format(
+            self._format_version, self._file.filename))
+
         logger.debug("Range entry values")
-        for a in self.range_entries:
-            logger.debug("{} {} {} {}".format(a[0], a[1], a[2], a[3]))
+        for range_entry in self.range_entries:
+            logger.debug("{0:d} {1:d} {2:d} {3:d}".format(
+                range_entry[0], range_entry[1], range_entry[2], range_entry[3]))
+
         logger.debug("Uuid entry values")
-        for b in self.uuid_entries:
-            logger.debug("{} {} {} {} {}".format(b[0], b[1], b[2], b[3], b[4]))
+        for uuid_entry in self.uuid_entries:
+            logger.debug("{0:d} {1:d} {2!s} {3:s} {3:s}".format(
+                uuid_entry[0], uuid_entry[1], uuid_entry[2], uuid_entry[3],
+                uuid_entry[4]))
 
     def Parse(self):
         '''Parses a dsc file.
 
-        self.file.is_valid is set to False if this method encounters issues
+        self._file.is_valid is set to False if this method encounters issues
         parsing the file.
 
         Returns:
           bool: True if the dsc file-like object was successfully parsed,
               False otherwise.
         '''
-        file_object = self.file.open()
+        file_object = self._file.open()
         if not file_object:
           return False
 
@@ -172,6 +173,6 @@ class Dsc(object):
             result = False
 
         if not result:
-            self.file.is_valid = False
+            self._file.is_valid = False
 
         return result

@@ -5,10 +5,13 @@ from __future__ import unicode_literals
 
 import os
 
+from UnifiedLog import data_format
 from UnifiedLog import logger
 
 
-class Uuidtext(object):
+class Uuidtext(data_format.BinaryDataFormat):
+    '''Uuidtext file parser.'''
+
     def __init__(self, v_file, uuid):
         super(Uuidtext, self).__init__()
         self.file = v_file

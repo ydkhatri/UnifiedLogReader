@@ -22,9 +22,9 @@ class DscTest(test_lib.BaseTestCase):
     def testFindVirtualOffsetEntries(self):
         '''Tests the FindVirtualOffsetEntries function.'''
         path = self._GetTestFilePath(['8E21CAB1DCF936B49F85CF860E6F34EC'])
-        file_object = virtual_file.VirtualFile(path, filetype='dsc')
+        file_entry = virtual_file.VirtualFile(path, filetype='dsc')
 
-        test_file = dsc_file.Dsc(file_object)
+        test_file = dsc_file.Dsc(file_entry)
 
         test_range_entry, test_uuid_entry = test_file.FindVirtualOffsetEntries(
             0x00048a40)
@@ -46,9 +46,9 @@ class DscTest(test_lib.BaseTestCase):
     def testReadFmtStringAndEntriesFromVirtualOffset(self):
         '''Tests the ReadFmtStringAndEntriesFromVirtualOffset function.'''
         path = self._GetTestFilePath(['8E21CAB1DCF936B49F85CF860E6F34EC'])
-        file_object = virtual_file.VirtualFile(path, filetype='dsc')
+        file_entry = virtual_file.VirtualFile(path, filetype='dsc')
 
-        test_file = dsc_file.Dsc(file_object)
+        test_file = dsc_file.Dsc(file_entry)
 
         with self.assertRaises(KeyError):
             test_file.ReadFmtStringAndEntriesFromVirtualOffset(0x00048a40)
@@ -67,9 +67,9 @@ class DscTest(test_lib.BaseTestCase):
     def testGetUuidEntryFromVirtualOffset(self):
         '''Tests the GetUuidEntryFromVirtualOffset function.'''
         path = self._GetTestFilePath(['8E21CAB1DCF936B49F85CF860E6F34EC'])
-        file_object = virtual_file.VirtualFile(path, filetype='dsc')
+        file_entry = virtual_file.VirtualFile(path, filetype='dsc')
 
-        test_file = dsc_file.Dsc(file_object)
+        test_file = dsc_file.Dsc(file_entry)
 
         test_uuid_entry = test_file.GetUuidEntryFromVirtualOffset(0x00030000)
         self.assertIsNone(test_uuid_entry)
@@ -85,18 +85,18 @@ class DscTest(test_lib.BaseTestCase):
     def testDebugPrintDsc(self):
         '''Tests the DebugPrintDsc function.'''
         path = self._GetTestFilePath(['8E21CAB1DCF936B49F85CF860E6F34EC'])
-        file_object = virtual_file.VirtualFile(path, filetype='dsc')
+        file_entry = virtual_file.VirtualFile(path, filetype='dsc')
 
-        test_file = dsc_file.Dsc(file_object)
+        test_file = dsc_file.Dsc(file_entry)
 
         test_file.DebugPrintDsc()
 
     def testParse(self):
         '''Tests the Parse function.'''
         path = self._GetTestFilePath(['8E21CAB1DCF936B49F85CF860E6F34EC'])
-        file_object = virtual_file.VirtualFile(path, filetype='dsc')
+        file_entry = virtual_file.VirtualFile(path, filetype='dsc')
 
-        test_file = dsc_file.Dsc(file_object)
+        test_file = dsc_file.Dsc(file_entry)
 
         self.assertTrue(test_file.Parse())
 

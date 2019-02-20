@@ -72,6 +72,7 @@ class Dsc(data_format.BinaryDataFormat):
         while len(self.uuid_entries) < num_uuid_entries:
             file_object.seek(uuid_entry_offset, os.SEEK_SET)
             uuid_entry_data = file_object.read(28)
+            uuid_entry_offset += 28
 
             v_off, size = struct.unpack("<II", uuid_entry_data[:8])
             uuid_object = uuid.UUID(bytes=uuid_entry_data[8:24])

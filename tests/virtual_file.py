@@ -16,7 +16,7 @@ class VirtualFileTest(test_lib.BaseTestCase):
 
     def testGetFileSize(self):
         '''Tests the get_file_size function.'''
-        path = self._GetTestFilePath(['0D3C2953A33917B333DD8366AC25F2'])
+        path = self._GetTestFilePath(['7EF56328D53A78B59CCCE3E3189F57'])
         file_entry = virtual_file.VirtualFile(path, filetype='uuidtext')
 
         file_entry.open()
@@ -25,7 +25,7 @@ class VirtualFileTest(test_lib.BaseTestCase):
         finally:
             file_entry.close()
 
-        self.assertEqual(file_size, 33)
+        self.assertEqual(file_size, 1100)
 
 
 if __name__ == '__main__':

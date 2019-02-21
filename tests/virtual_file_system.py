@@ -22,7 +22,7 @@ class VirtualFileSystemTests(test_lib.BaseTestCase):
             virtual_file.VirtualFile)
 
         path = os.path.join(
-            self._TEST_DATA_PATH, '0D3C2953A33917B333DD8366AC25F2')
+            self._TEST_DATA_PATH, '7EF56328D53A78B59CCCE3E3189F57')
         result = file_system.path_exists(path)
         self.assertTrue(result)
 
@@ -37,7 +37,7 @@ class VirtualFileSystemTests(test_lib.BaseTestCase):
 
         expected_directory_entries = [
             '0000000000000030.tracev3',
-            '0D3C2953A33917B333DD8366AC25F2',
+            '7EF56328D53A78B59CCCE3E3189F57',
             '8E21CAB1DCF936B49F85CF860E6F34EC']
 
         directory_entries = file_system.listdir(self._TEST_DATA_PATH)
@@ -53,7 +53,7 @@ class VirtualFileSystemTests(test_lib.BaseTestCase):
         self.assertTrue(result)
 
         path = os.path.join(
-            self._TEST_DATA_PATH, '0D3C2953A33917B333DD8366AC25F2')
+            self._TEST_DATA_PATH, '7EF56328D53A78B59CCCE3E3189F57')
         result = file_system.is_dir(path)
         self.assertFalse(result)
 
@@ -63,9 +63,9 @@ class VirtualFileSystemTests(test_lib.BaseTestCase):
             virtual_file.VirtualFile)
 
         expected_path = os.path.join(
-            self._TEST_DATA_PATH, '0D3C2953A33917B333DD8366AC25F2')
+            self._TEST_DATA_PATH, '7EF56328D53A78B59CCCE3E3189F57')
         path = file_system.path_join(
-            self._TEST_DATA_PATH, '0D3C2953A33917B333DD8366AC25F2')
+            self._TEST_DATA_PATH, '7EF56328D53A78B59CCCE3E3189F57')
         self.assertEqual(path, expected_path)
 
     def testGetVirtualFile(self):
@@ -74,7 +74,7 @@ class VirtualFileSystemTests(test_lib.BaseTestCase):
             virtual_file.VirtualFile)
 
         path = os.path.join(
-            self._TEST_DATA_PATH, '0D3C2953A33917B333DD8366AC25F2')
+            self._TEST_DATA_PATH, '7EF56328D53A78B59CCCE3E3189F57')
         file_entry = file_system.get_virtual_file(path, filetype='uuidtext')
         self.assertIsNotNone(file_entry)
         self.assertIsInstance(file_entry, virtual_file.VirtualFile)

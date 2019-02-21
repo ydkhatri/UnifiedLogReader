@@ -22,8 +22,8 @@ class Uuidtext(data_format.BinaryDataFormat):
           uuid (uuid.UUID): an UUID.
         '''
         super(Uuidtext, self).__init__()
+        self._entries = []   # [ [range_start_offset, data_offset, data_len], [..] , ..]
         self._file = v_file
-        self.entries = []   # [ [range_start_offset, data_offset, data_len], [..] , ..]
         self.library_path = ''
         self.library_name = ''
         self.Uuid = uuid
@@ -60,14 +60,15 @@ class Uuidtext(data_format.BinaryDataFormat):
 
         entry_offset = 0
         data_offset = 16 + entries_data_size
-        while len(self.entries) < num_entries:
+        while len(self._entries) < num_entries:
             entry_end_offset = entry_offset + 8
             range_start_offset, data_len = struct.unpack(
                 "<II", entries_data[entry_offset:entry_end_offset])
 
             entry_offset = entry_end_offset
 
-            self.entries.append([range_start_offset, data_offset, data_len])
+            entry_tuple = (range_start_offset, data_offset, data_len)
+            self._entries.append(entry_tuple)
             data_offset += data_len
 
         file_object.seek(data_offset, os.SEEK_SET)
@@ -78,22 +79,37 @@ class Uuidtext(data_format.BinaryDataFormat):
         return True
 
     def ReadFmtStringFromVirtualOffset(self, v_offset):
+        '''Reads a format string for a specific virtual offset.
+
+        Args:
+          v_offset (int): virtual offset.
+
+        Returns:
+          str: a format string, '%s' if the 32-bit MSB (0x80000000) is set or
+              '<compose failure [UUID]>' if the uuidtext file could not be
+              parsed or there is no entry corresponding with the virtual offset.
+        '''
         if not self._file.is_valid:
-            return '<compose failure [UUID]>' # value returned by 'log' program if uuidtext is not found
+            # This is the value returned by the MacOS 'log' program if uuidtext
+            # is not found.
+            return '<compose failure [UUID]>'
 
         if v_offset & 0x80000000:
-            return '%s' # if highest bit is set
+            return '%s'
 
-        for entry in self.entries:
-            if (entry[0] <= v_offset) and ((entry[0] + entry[2]) > v_offset):
-                rel_offset = v_offset - entry[0]
-                f = self._file.file_pointer
-                f.seek(entry[1] + rel_offset)
-                buffer = f.read(entry[2] - rel_offset)
-                return self._ReadCString(buffer)
+        for range_start_offset, data_offset, data_len in self._entries:
+            range_end_offset = range_start_offset + data_len
+            if range_start_offset <= v_offset < range_end_offset:
+                rel_offset = v_offset - range_start_offset
 
-        #Not found
-        logger.error('Invalid bounds 0x{:X} for {}'.format(v_offset, str(self.Uuid))) # This is error msg from 'log'
+                file_object = self._file.file_pointer
+                file_object.seek(data_offset + rel_offset)
+                format_string_data = file_object.read(data_len - rel_offset)
+                return self._ReadCString(format_string_data)
+
+        # This is the value returned by the MacOS 'log' program if the uuidtext
+        # entry is not found.
+        logger.error('Invalid bounds 0x{0:X} for {1!s}'.format(v_offset, self.Uuid))
         return '<compose failure [UUID]>'
 
     def Parse(self):

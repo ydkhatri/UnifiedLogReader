@@ -6,7 +6,7 @@ from __future__ import unicode_literals
 import os
 import posixpath
 import struct
-import uuid
+from uuid import UUID
 
 from UnifiedLog import data_format
 from UnifiedLog import logger
@@ -17,7 +17,7 @@ class Dsc(data_format.BinaryDataFormat):
 
     Attributes:
       range_entries (list[tuple[int, int, int, int]]): range entries.
-      uuid_entries (list[tuple[int, int, uuid.UUID, str, str]]): UUID entries.
+      uuid_entries (list[tuple[int, int, UUID, str, str]]): UUID entries.
     '''
 
     def __init__(self, v_file):
@@ -75,7 +75,7 @@ class Dsc(data_format.BinaryDataFormat):
             uuid_entry_offset += 28
 
             v_off, size = struct.unpack("<II", uuid_entry_data[:8])
-            uuid_object = uuid.UUID(bytes=uuid_entry_data[8:24])
+            uuid_object = UUID(bytes=uuid_entry_data[8:24])
             data_offset = struct.unpack("<I", uuid_entry_data[24:])[0]
 
             file_object.seek(data_offset, os.SEEK_SET)
@@ -110,7 +110,7 @@ class Dsc(data_format.BinaryDataFormat):
           tuple: that contains:
             str: format string.
             tuple[int, int, int, int]: range entry.
-            tuple[int, int, uuid.UUID, str, str]: UUID entry.
+            tuple[int, int, UUID, str, str]: UUID entry.
 
         Raises:
           KeyError: if no range entry could be found corresponding the offset.

@@ -39,7 +39,7 @@ import binascii
 import datetime
 import os
 import struct
-import uuid
+from uuid import UUID
 
 import lz4.block
 
@@ -185,7 +185,7 @@ def ReadTimesyncFile(buffer, ts_list):
             if sig != 0xBBB0:
                 logger.error("not the right signature for Timesync header, got 0x{:04X} instead of 0x{:04X}, pos was 0x{:08X}".format(sig, 0x0030BBB0, pos))
                 break
-            uuid = uuid.UUID(bytes=buffer[pos+8:pos+24])
+            uuid = UUID(bytes=buffer[pos+8:pos+24])
             ts_numer, ts_denom, t_stamp, tz, is_dst = struct.unpack("<IIqiI", buffer[pos+24:pos+48])
             ts_header = resources.TimesyncHeader(sig, unk1, uuid, ts_numer, ts_denom, t_stamp, tz, is_dst)
             pos += header_size # 0x30 (48) by default
@@ -201,11 +201,11 @@ def ReadTimesyncFile(buffer, ts_list):
             if existing_ts:
                 ts_obj = existing_ts
             else:
-                ts_obj = resouces.Timesync(ts_header)
+                ts_obj = resources.Timesync(ts_header)
                 ts_list.append(ts_obj)
                 # Adding header timestamp as Ts type too with cont_time = 0
                 timesync_item = resources.TimesyncItem(0, 0, t_stamp, tz, is_dst)
-                ts_obj.items.append(timesync_itme)
+                ts_obj.items.append(timesync_item)
             while pos < size:
                 if buffer[pos:pos+4] == b'Ts \x00':
                     ts_unknown, cont_time, t_stamp, bias, is_dst = struct.unpack("<IqqiI", buffer[pos+4:pos+32])

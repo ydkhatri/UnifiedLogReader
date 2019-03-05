@@ -16,3 +16,6 @@ exception = _logger.exception
 info = _logger.info
 log = _logger.log
 warning = _logger.warning
+
+addHandler = _logger.addHandler
+setLevel = _logger.setLevel

@@ -41,6 +41,8 @@ class VirtualFile(object):
 
     def get_file_size(self):
         '''Returns file logical size. Must be called after file is opened'''
+        if not self.is_valid: 
+            return 0
         if not self.file_pointer:
             raise ValueError('File pointer was invalid. File must be opened before calling get_file_size()')
         original_pos = self.file_pointer.tell()

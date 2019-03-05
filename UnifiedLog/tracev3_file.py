@@ -7,13 +7,14 @@ import binascii
 import ipaddress
 import re
 import struct
-import uuid
+from uuid import UUID
 
 import biplist
 
 from UnifiedLog import data_format
 from UnifiedLog import logger
 from UnifiedLog import resources
+from UnifiedLog import uuidtext_file
 
 
 class TraceV3(data_format.BinaryDataFormat):
@@ -191,7 +192,7 @@ class TraceV3(data_format.BinaryDataFormat):
                 self.header_item_continuousTime = struct.unpack("<Q", buffer[pos:pos+item_length])[0]
             elif item_id == 0x6101: pass # machine hostname & model
             elif item_id == 0x6102: # uuid
-                self.system_boot_uuid = uuid.UUID(bytes=buffer[pos:pos+16])
+                self.system_boot_uuid = UUID(bytes=buffer[pos:pos+16])
                 self.boot_uuid_ts_list = self._GetBootUuidTimeSyncList(self.ts_list, self.system_boot_uuid)
                 if self.boot_uuid_ts_list is None:
                     raise ValueError('Could not get Timesync for boot uuid! Cannot parse file..')
@@ -228,7 +229,7 @@ class TraceV3(data_format.BinaryDataFormat):
                 is_dsc = False
                 full_path = self.vfs.path_join(self.uuidtext_folder_path, uuid_string[0:2], uuid_string[2:])
                 file_object = self.vfs.get_virtual_file(full_path, 'Uuidtext')
-                ut = uuidtext_file.Uuidtext(file_object, uuid.UUID(uuid_string))
+                ut = uuidtext_file.Uuidtext(file_object, UUID(uuid_string))
                 ut.Parse()
                 catalog.FileObjects.append(ut)
         except:
@@ -582,7 +583,7 @@ class TraceV3(data_format.BinaryDataFormat):
                                 msg += '<private>'
                             else: logger.error('unknown err, size=0, data_type=0x{:X} in log @ 0x{:X}'.format(data_type, log_file_pos))
                         else:
-                            uuid = uuid.UUID(bytes=raw_data)
+                            uuid = UUID(bytes=raw_data)
                             msg += str(uuid).upper()
                     elif custom_specifier.find('odtypes:mbr_details') > 0:
                         unk = raw_data[0]
@@ -908,7 +909,7 @@ class TraceV3(data_format.BinaryDataFormat):
                                 if not ut: # Not found, so open and parse new file
                                     uuidtext_full_path = self.vfs.path_join(self.uuidtext_folder_path, file_path[0:2], file_path[2:])
                                     file_object = self.vfs.get_virtual_file(uuidtext_full_path, 'Uuidtext')
-                                    ut = uuidtext_file.Uuidtext(file_object, uuid.UUID(file_path))
+                                    ut = uuidtext_file.Uuidtext(file_object, UUID(file_path))
                                     self.other_uuidtext[file_path] = ut # Add to other_uuidtext, so we don't have to parse it again
                                     if not ut.Parse():
                                         ut = None
@@ -1070,7 +1071,7 @@ class TraceV3(data_format.BinaryDataFormat):
                 log_type = 'State'
                 ct, activity_id, un7 = struct.unpack("<QII", buffer[pos + pos2 : pos + pos2 + 16])
                 pos2 += 16
-                uuid = uuid.UUID(bytes = buffer[pos + pos2 : pos + pos2 + 16])
+                uuid = UUID(bytes = buffer[pos + pos2 : pos + pos2 + 16])
                 pos2 += 16
                 data_type, data_len = struct.unpack('<II', buffer[pos + pos2 : pos + pos2 + 8])
                 pos2 += 8

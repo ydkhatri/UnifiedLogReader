@@ -12,14 +12,18 @@ _This is a work in progress.. Currently this does not support the first version 
 
 MIT
 
-## Requirements
+## Requirements & Installation
 
 32-bit Python 2.7 and the following modules
 * lz4
 * biplist
 * ipaddress
 
-The modules can easily be installed using `pip install -r requirements.txt`
+UnifiedLogReader (and the dependencies) can be installed using `pip install unifiedlog lz4 biplist ipaddress` 
+
+
+Do not download from here, unless you want the latest code.
+For development, if you only need the dependencies, use `pip install -r requirements.txt`
 
 ## Usage
 

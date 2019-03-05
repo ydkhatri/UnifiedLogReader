@@ -104,7 +104,7 @@ class SQLiteDatabaseOutputWriter(object):
         Args:
           path (str): path of the SQLite database file.
         '''
-        super(UnifiedLogReader, self).__init__()
+        super(SQLiteDatabaseOutputWriter, self).__init__()
         self._connection = None
         self._path = path
 
@@ -194,7 +194,7 @@ class TSVFileOutputWriter(object):
         if mode not in ('ALL', 'DEFAULT'):
             raise ValueError('Unsupported mode')
 
-        super(UnifiedLogReader, self).__init__()
+        super(TSVFileOutputWriter, self).__init__()
         self._file_object = None
         self._mode = mode
         self._path = path
@@ -215,13 +215,22 @@ class TSVFileOutputWriter(object):
         '''
         logger.info('Creating output file %s', self._path)
 
-        # io.open() is portable between Python 2 and 3
-        # using text mode so we don't have to care about end-of-line character
-        self._file_object = io.open(self._path, 'wt', encoding='utf-8')
-        if self._mode == 'ALL':
-            self._file_object.write(self._HEADER_ALL)
-        else:
-            self._file_object.write(self._HEADER_DEFAULT)
+        try:
+            # io.open() is portable between Python 2 and 3
+            # using text mode so we don't have to care about end-of-line character
+            self._file_object = io.open(self._path, 'wt', encoding='utf-8')
+            try:
+                if self._mode == 'ALL':
+                    self._file_object.write(self._HEADER_ALL)
+                else:
+                    self._file_object.write(self._HEADER_DEFAULT)
+            except (IOError, OSError):
+                logger.exception('Error writing to output file')
+                return False
+        except (IOError, OSError):
+            logger.exception('Failed to open file %s', self._path)
+            return False
+        return True
 
     def WriteLogEntry(self, log):
         '''Writes a Unified Log entry.
@@ -281,7 +290,7 @@ class UnifiedLogReader(object):
 
     # TODO: remove log_list_process_func callback from TraceV3.Parse() 
     def _ProcessLogsList(self, logs, tracev3):
-        for log_entry in trace_file.Parse():
+        for log_entry in logs:
             self._output_writer.WriteLogEntry(log_entry)
             self.total_logs_processed += 1
 
@@ -295,7 +304,7 @@ class UnifiedLogReader(object):
         Returns:
           TraceV3: tracev3 file.
         '''
-        file_object = virtual_file.VirtualFile(path, 'traceV3')
+        file_object = virtual_file.VirtualFile(tracev3_path, 'traceV3')
         trace_file = tracev3_file.TraceV3(
             self._vfs, file_object, self._ts_list, self._uuidtext_folder_path,
             self._caches)
@@ -304,7 +313,7 @@ class UnifiedLogReader(object):
         self._output_writer = output_writer
         trace_file.Parse(log_list_process_func=self._ProcessLogsList)
 
-    def _ReadTraceV3Folder(self, tracev3_path):
+    def _ReadTraceV3Folder(self, tracev3_path, output_writer):
         '''Reads all the tracev3 files in the folder.
 
         Args:
@@ -394,7 +403,7 @@ def Main():
          '-f', '--output_format', action='store', choices=(
              'SQLITE', 'TSV_ALL', 'TSV_DEFAULT'),
          metavar='FORMAT', default='TSV_DEFAULT', help=(
-             'Output format: SQLITE, TSV_ALL, TSV_DEFAULT  (Default is TSV_DEFAULT)'))
+             'Output format: SQLITE, TSV_ALL, TSV_DEFAULT  (Default is TSV_DEFAULT)'), type=str.upper)
 
     arg_parser.add_argument('-l', '--log_level', help='Log levels: INFO, DEBUG, WARNING, ERROR (Default is INFO)')
 
@@ -453,7 +462,7 @@ def Main():
 
     unified_log_reader = UnifiedLogReader()
 
-    if not unified_log_reader.ReadTimesyncFolder():
+    if not unified_log_reader.ReadTimesyncFolder(timesync_folder_path):
         logger.error('Failed to get any timesync entries')
         return False
 
@@ -467,8 +476,7 @@ def Main():
             file_path, mode=args.output_format[4:])
 
     if not output_writer.Open():
-        logger.exception("Failed to open output for writing")
-        return
+        return False
 
     time_processing_started = time.time()
     logger.info('Started processing')

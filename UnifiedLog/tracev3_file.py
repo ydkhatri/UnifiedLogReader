@@ -4,6 +4,7 @@
 from __future__ import unicode_literals
 
 import binascii
+import lz4.block
 import ipaddress
 import re
 import struct
@@ -379,7 +380,7 @@ class TraceV3(data_format.BinaryDataFormat):
             chunk_index += 1
 
             # Skip 64-bit alignment padding.
-            _, remainder = divmod(sub_systems_end_offset, 8)
+            _, remainder = divmod(end_data_offset, 8)
             if remainder > 0:
               data_offset += 8 - remainder
 
@@ -901,7 +902,7 @@ class TraceV3(data_format.BinaryDataFormat):
                                 ut = None
                                 # search in existing files, likely will not find it here!
                                 for obj in catalog.FileObjects:
-                                    if obj.file.filename == file_path:
+                                    if obj._file.filename == file_path:
                                         ut = obj
                                         break
                                 if not ut: # search in other_uuidtext, as we may have seen this earlier

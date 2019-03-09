@@ -73,11 +73,11 @@ class OutputWriter(object):
         '''
 
     @abc.abstractmethod
-    def WriteLogEntry(self, log):
+    def WriteLogEntry(self, log_entry):
         '''Writes a Unified Log entry.
 
         Args:
-          log (???): log entry:
+          log (LogEntry): log entry.
         '''
 
 
@@ -146,21 +146,31 @@ class SQLiteDatabaseOutputWriter(object):
 
         return True
 
-    def WriteLogEntry(self, log):
+    def WriteLogEntry(self, log_entry):
         '''Writes a Unified Log entry.
 
         Args:
-          log (???): log entry:
+          log (LogEntry): log entry.
         '''
         if self._connection:
-            log[3] = UnifiedLogLib.ReadAPFSTime(log[3])
-            log[18] = '{0!s}'.format(log[18])
-            log[19] = '{0!s}'.format(log[19])
+            time_value = UnifiedLogLib.ReadAPFSTime(log_entry.time)
+            values_tuple = (
+                log_entry.filename, log_entry.log_file_pos, log_entry.ct,
+                time_value, log_entry.thread, log_entry.log_type,
+                log_entry.act_id, log_entry.parentActivityIdentifier,
+                log_entry.pid, log_entry.euid, log_entry.ttl,
+                log_entry.p_name, log_entry.lib, log_entry.sub_sys,
+                log_entry.cat, log_entry.signpost_name,
+                log_entry.signpost_string, log_entry.imageOffset,
+                '{0!s}'.format(log_entry.imageUUID),
+                '{0!s}'.format(log_entry.processImageUUID),
+                log_entry.senderImagePath, log_entry.processImagePath,
+                log_entry.log_msg)
 
             # TODO: cache queries to use executemany
             try:
                 cursor = self._connection.cursor()
-                cursor.execute(self._INSERT_LOGS_VALUES_QUERY, log)
+                cursor.execute(self._INSERT_LOGS_VALUES_QUERY, values_tuple)
 
             except sqlite3.Error:
                 logger.exception('Error inserting data into database')
@@ -232,44 +242,58 @@ class TSVFileOutputWriter(object):
             return False
         return True
 
-    def WriteLogEntry(self, log):
+    def WriteLogEntry(self, log_entry):
         '''Writes a Unified Log entry.
 
         Args:
-          log (???): log entry:
+          log (LogEntry): log entry.
         '''
         if self._file_object:
-            log[3] = UnifiedLogLib.ReadAPFSTime(log[3])
+            time_value = UnifiedLogLib.ReadAPFSTime(log_entry.time)
 
             try:
                 if self._mode == 'ALL':
-                    log[18] = u'{0!s}'.format(log[18]).upper()
-                    log[19] = u'{0!s}'.format(log[19]).upper()
+                    imageUUID = '{0!s}'.format(log_entry.imageUUID).upper()
+                    processImageUUID = '{0!s}'.format(
+                        log_entry.processImageUUID).upper()
 
                     self._file_object.write((
                         u'{}\t0x{:X}\t{}\t{}\t0x{:X}\t{}\t0x{:X}\t0x{:X}\t{}\t'
                         u'{}\t{}\t({})\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t'
                         u'{}').format(
-                            log[0], log[1], log[2], log[3], log[4], log[5],
-                            log[6], log[7], log[8], log[9], log[10], log[11],
-                            log[12], log[13], log[14], log[15], log[16],
-                            log[17], log[18], log[19], log[20], log[21],
-                            log[22]))
+                            log_entry.filename, log_entry.log_file_pos,
+                            log_entry.ct, time_value, log_entry.thread,
+                            log_entry.log_type, log_entry.act_id,
+                            log_entry.parentActivityIdentifier, log_entry.pid,
+                            log_entry.euid, log_entry.ttl, log_entry.p_name,
+                            log_entry.lib, log_entry.sub_sys, log_entry.cat,
+                            log_entry.signpost_name, log_entry.signpost_string,
+                            log_entry.imageOffset, imageUUID, processImageUUID,
+                            log_entry.senderImagePath, log_entry.processImagePath,
+                            log_entry.log_msg))
 
                 else:
-                    signpost = ''  # (log[15] + ':') if log[15] else ''
-                    if log[15]:
-                        signpost += '[' + log[16] + ']'
-                    msg = (signpost + ' ') if signpost else ''
-                    msg += log[11] + ' ' + (( '(' + log[12] + ') ') if log[12] else '')
-                    if len(log[13]) or len (log[14]):
-                        msg += '[' + log[13] + ':' + log[14] + '] '
-                    msg += log[22]
+                    msg_parts = []
+                    if log_entry.signpost_name:
+                        msg_parts.append('[{0:s}]'.format(
+                            log_entry.signpost_string))
+
+                    msg_parts.append('{0:s} '.format(log_entry.p_name))
+                    if log_entry.lib:
+                      msg_parts.append('({0:s})'.format(log_entry.lib))
+
+                    if log_entry.sub_sys or log_entry.cat:
+                      msg_parts.append('[{0:s}:{1:s}]'.format(
+                          log_entry.sub_sys, log_entry.cat))
+
+                    msg_parts.append('{0:s} '.format(log_entry.log_msg))
+
+                    msg = ''.join(msg_parts)
 
                     self._file_object.write((
                         u'{time:26} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} '
                         u'{li[8]:<6} {li[10]:<4} {message}').format(
-                            li=log, time=log[3], message=msg))
+                            li=log, time=time_value, message=msg))
 
             except (IOError, OSError):
                 logger.exception('Error writing to output file')

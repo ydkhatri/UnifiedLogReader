@@ -30,6 +30,11 @@ class VirtualFile(object):
             logger.debug('Trying to read {} file {}'.format(self.file_type, self.path))
             self.file_pointer = open(self.path, mode)
             return self.file_pointer
+
+        except (ImportError, NameError, UnboundLocalError):
+            raise
+
+        # TODO: refactor wide exception.
         except Exception as ex:
             if str(ex).find('No such file') == -1:
                 logger.exception('Failed to open file {}'.format(self.path))

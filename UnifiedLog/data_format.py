@@ -19,6 +19,11 @@ class BinaryDataFormat(object):
                 if type(mac_apfs_time) in (str, unicode):
                     mac_apfs_time = float(mac_apfs_time)
                 return datetime.datetime(1970, 1, 1) + datetime.timedelta(seconds=mac_apfs_time/1000000000.)
+
+            except (ImportError, NameError, UnboundLocalError):
+                raise
+
+            # TODO: refactor wide exception.
             except Exception as ex:
                 logger.error("ReadAPFSTime() Failed to convert timestamp from value " + str(mac_apfs_time) + " Error was: " + str(ex))
         return ''
@@ -35,7 +40,11 @@ class BinaryDataFormat(object):
                 string = data.decode('utf8')
             else:
                 string = data[0:null_pos].decode('utf8')
-        except:
+        except (ImportError, NameError, UnboundLocalError):
+            raise
+
+        # TODO: refactor wide exception.
+        except Exception as ex:
             logger.exception('Error reading C-String')
 
         return string
@@ -56,7 +65,11 @@ class BinaryDataFormat(object):
                 string = data.decode('utf8')
             else:
                 string = data[0:null_pos].decode('utf8')
-        except:
+        except (ImportError, NameError, UnboundLocalError):
+            raise
+
+        # TODO: refactor wide exception.
+        except Exception as ex:
             logger.exception('Error reading C-String')
         return string, null_pos
 

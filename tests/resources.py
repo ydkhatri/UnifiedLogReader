@@ -40,6 +40,17 @@ class ExtraFileReferenceTest(test_lib.BaseTestCase):
         self.assertIsNotNone(test_file_reference)
 
 
+class LogEntryTest(test_lib.BaseTestCase):
+    '''Tests for the log entry.'''
+
+    def testInitialize(self):
+        '''Tests the __init__ function.'''
+        test_log_entry = resources.LogEntry(
+             '', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+             0, '')
+        self.assertIsNotNone(test_log_entry)
+
+
 class ProcInfoTest(test_lib.BaseTestCase):
     '''Tests for the process information.'''
 

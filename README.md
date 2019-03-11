@@ -14,7 +14,7 @@ MIT
 
 ## Requirements & Installation
 
-32-bit Python 2.7 and the following modules
+Python 2.7 and the following modules
 * lz4
 * biplist
 * ipaddress

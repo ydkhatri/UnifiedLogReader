@@ -21,13 +21,15 @@ from UnifiedLog import uuidtext_file
 class TraceV3(data_format.BinaryDataFormat):
     '''Tracev3 file parser.'''
 
-    def __init__(self, v_fs, v_file, ts_list, uuidtext_folder_path, cached_files=None):
+    def __init__(self, v_fs, v_file, ts_list, uuidtext_folder_path, large_data_cache, cached_files=None):
         '''
             Input params:
             v_fs    = VirtualFileSystem object for FS operations (listing dirs, opening files ,..)
             v_file  = VirtualFile object for .traceV3 file
             ts_list = List of TimeSync objects
             uuidtext_folder_path = Path to folder containing Uuidtext folders (and files)
+            large_data_cache = Dictionary to store oversize data, 
+                                key = ( data_ref_id << 64 | contTime ) , value = data 
             cached_files = CachedFiles object for dsc & uuidtext files (can be None)
         '''
         super(TraceV3, self).__init__()
@@ -386,6 +388,30 @@ class TraceV3(data_format.BinaryDataFormat):
 
         return catalog
 
+    def CreateLossMsg(self, ts, start_ct, ct_base, buffer, buf_size):
+        '''Creates and returns the message body for log type LOSS'''
+        if buf_size < 20:
+            log.error('Buffer too small to hold loss data! size={}, expected 20'.format(buf_size))
+            msg = 'loss: <error reading this data>'
+        else:
+            msg = 'lost {}{} unreliable messages from {} - {}  (exact start-approx. end)'
+            sign, end_ct_rel, count = struct.unpack('<IQI', buffer[0:16])
+            end_ct = ct_base + end_ct_rel
+            end_time = ts.time_stamp + end_ct - ts.continuousTime
+            start_time = ts.time_stamp + start_ct - ts.continuousTime
+            if sign == 1:
+                sign == '>='
+            elif sign == 4:
+                sign = ''
+            else:
+                log.info('Unseen sign value of {}'.format(sign))
+                sign = ''
+            try:
+                msg = msg.format(sign, count, self._ReadAPFSTime(start_time), self._ReadAPFSTime(end_time))
+            except ValueError:
+                log.exception('')
+        return msg
+
     def ReadLogDataBuffer2(self, buffer, buf_size, strings_buffer):
         '''
             Reads log data when data descriptors are at end of buffer
@@ -396,7 +422,7 @@ class TraceV3(data_format.BinaryDataFormat):
         if buf_size == 0:
             return data
         
-        total_items = struct.unpack('<B', buffer[-1])[0]
+        total_items = struct.unpack('<B', buffer[-1:])[0]
         pos = buf_size - 1
         if buf_size == 1:
             if total_items != 0:
@@ -529,11 +555,13 @@ class TraceV3(data_format.BinaryDataFormat):
                     else: # size should be 4 or 8
                         if specifier in ('d', 'D'): # signed int32 or int64
                             specifier = 'd'  # Python does not support 'D'
-                            if   data_size == 4: number = struct.unpack("<i", raw_data)[0]
+                            if   data_size == 1: number = struct.unpack("<b", raw_data)[0]
+                            elif data_size == 4: number = struct.unpack("<i", raw_data)[0]
                             elif data_size == 8: number = struct.unpack("<q", raw_data)[0]
                             else: logger.error('Unknown length ({}) for number '.format(data_size))
                         else:
-                            if   data_size == 4: number = struct.unpack("<I", raw_data)[0]
+                            if   data_size == 1: number = struct.unpack("<B", raw_data)[0]
+                            elif data_size == 4: number = struct.unpack("<I", raw_data)[0]
                             elif data_size == 8: number = struct.unpack("<Q", raw_data)[0]
                             else: logger.error('Unknown length ({}) for number '.format(data_size))
                             if   specifier == 'U': specifier = 'u'  # Python does not support 'U'
@@ -649,7 +677,7 @@ class TraceV3(data_format.BinaryDataFormat):
                         if   data_size == 8: number = struct.unpack("<Q", raw_data)[0]
                         elif data_size == 4: number = struct.unpack("<I", raw_data)[0]
                         else: logger.error('Unknown length ({}) for number in log @ 0x{:X}'.format(data_size, log_file_pos))
-                        msg += ('%' + flags_width_precision + 'x') % number
+                        msg += '0x' + ('%' + flags_width_precision + 'x') % number
             except:
                 logger.exception('exception for log @ 0x{:X}'.format(log_file_pos))
                 msg += "E-R-R-O-R"
@@ -800,6 +828,7 @@ class TraceV3(data_format.BinaryDataFormat):
                         elif u1_upper_byte == 0x02: log_type = 'Debug'
                         elif u1_upper_byte == 0x10: log_type = 'Error'
                         elif u1_upper_byte == 0x11: log_type = 'Fault'
+                        elif u1 == 7: log_type = 'Loss' # New
 
                         if u2 & 0x7000:
                             logger.info('Unknown flag for u2 encountered u2=0x{:4X} @ 0x{:X} ct={}'.format(u2, log_file_pos, ct))
@@ -989,6 +1018,8 @@ class TraceV3(data_format.BinaryDataFormat):
                                 logger.error('Failed to get DSC msg string @ 0x{:X} ct={}'.format(log_file_pos, ct))
 
                         elif has_alternate_uuid: pass #u2 & 0x0008: # Parsed above
+                        elif u1 == 7: # Loss
+                            pass
                         else:
                             logger.warning("No message string flags! @ 0x{:X} ct={}".format(log_file_pos, ct))
 
@@ -1006,7 +1037,8 @@ class TraceV3(data_format.BinaryDataFormat):
                                     logger.error('Flag has_private_data but no strings present! @ 0x{:X} ct={}'.format(log_file_pos, ct))
                             else:
                                 strings_slice = ''
-                            if u1 & 0x3 == 0x3: # data_descriptor_at_buffer_end
+                            if u1 & 0x7 == 0x7: pass #Loss
+                            elif u1 & 0x3 == 0x3: # data_descriptor_at_buffer_end
                                 log_data = self.ReadLogDataBuffer2(buffer[pos + pos3 : pos + pos3 + log_data_len2], log_data_len2, strings_slice)
                             else:
                                 log_data = self.ReadLogDataBuffer(buffer[pos + pos3 : pos + pos3 + log_data_len2], log_data_len2, strings_slice)
@@ -1016,6 +1048,8 @@ class TraceV3(data_format.BinaryDataFormat):
                             unique_ref = data_ref_id << 64 | ct
                             log_data = self.large_data.get(unique_ref, None)
                             if log_data:
+                                # let's delete it now from the dict, there should only be one reference!
+                                del self.large_data[unique_ref]
                                 log_data = log_data = self.ReadLogDataBuffer(log_data, len(log_data), '')
                             else:
                                 logger.error('Data Reference not found for unique_ref=0x{:X} ct={}!'.format(unique_ref, ct))
@@ -1024,8 +1058,12 @@ class TraceV3(data_format.BinaryDataFormat):
                                 # Eg: Logdata.Livedata.tracev3 will reference entries from Persist\*.tracev3 
                                 #  There are very few of these in practice.
 
-                        log_msg = self.RecreateMsgFromFmtStringAndData(format_str, log_data, log_file_pos) if log_data else format_str
+                        if u1 == 7: #Loss
+                            log_msg = self.CreateLossMsg(ts, ct, continuousTime, buffer[pos + pos3 : pos + pos3 + log_data_len2], log_data_len2)
+                        else:
+                            log_msg = self.RecreateMsgFromFmtStringAndData(format_str, log_data, log_file_pos) if log_data else format_str
                         if len(act_id) > 2: parentActivityIdentifier = act_id[-2]
+                        # TODO:For Loss type message, all other log fields are zero, confirm with more samples.
                         logs.append([self.file.filename, log_file_pos, ct, time, thread, log_type, act_id[-1], parentActivityIdentifier, \
                                         pid, euid, ttl, p_name, lib, sub_sys, cat,\
                                         signpost_name, signpost_string if is_signpost else '', 
@@ -1052,7 +1090,7 @@ class TraceV3(data_format.BinaryDataFormat):
                         pad_len = 8 - ((pos - start_skew) % 8)
                         pos += pad_len
                     else:
-                        logger.warning('Avoided padding for firehose chunk ending @ 0x{:X}'.format(debug_file_pos + pos))
+                        logger.debug('Avoided padding for firehose chunk ending @ 0x{:X}'.format(debug_file_pos + pos))
             elif tag == 0x6002: # Oversize
                 ct, data_ref_id, data_len = struct.unpack('<QII', buffer[pos + pos2 : pos + pos2 + 16])
                 pos2 += 16

@@ -25,14 +25,14 @@
 #
 # Script Name  : UnifiedLogReader.py
 # Author       : Yogesh Khatri
-# Last Updated : 2019-02-05
+# Last Updated : 2019-12-06
 # Purpose/Usage: This script will read unified logs. Tested on python2.7
 #
 # Notes:
 # Currently this is tested on version 17(0x11) of the tracev3 file used in
 # macOS Sierra (10.12.5) and above (including Mojave 10.14.2). It will not
 # work on Sierra (10.12) as it uses version 14(0xE), a later update will
-# address this.
+# address this. Also tested on iOS 12.4 logs.
 #
 
 from __future__ import print_function
@@ -70,6 +70,14 @@ class OutputWriter(object):
 
         Returns:
           bool: True if successful or False on error.
+        '''
+
+    @abc.abstractmethod
+    def WriteLogEntries(self, logs):
+        '''Writes several Unified Log entries.
+
+        Args:
+          logs (???): list of log entries:
         '''
 
     @abc.abstractmethod
@@ -112,6 +120,7 @@ class SQLiteDatabaseOutputWriter(object):
         '''Closes the unified logs reader.'''
         if self._connection:
             try:
+                self._connection.commit()
                 self._connection.close()
 
             except sqlite3.Error:
@@ -146,24 +155,35 @@ class SQLiteDatabaseOutputWriter(object):
 
         return True
 
+    def WriteLogEntries(self, logs):
+        '''Writes several Unified Log entries.
+
+        Args:
+          logs (???): list of log entries:
+        '''
+        if self._connection:
+            for log in logs:
+                log[3] = UnifiedLogLib.ReadAPFSTime(log[3])
+                log[18] = '{0!s}'.format(log[18])
+                log[19] = '{0!s}'.format(log[19])
+
+            # TODO: cache queries to use executemany
+            try:
+                cursor = self._connection.cursor()
+                cursor.executemany(self._INSERT_LOGS_VALUES_QUERY, logs)
+                self._connection.commit()
+
+            except sqlite3.Error:
+                logger.exception('Error inserting data into database')
+
+
     def WriteLogEntry(self, log):
         '''Writes a Unified Log entry.
 
         Args:
           log (???): log entry:
         '''
-        if self._connection:
-            log[3] = UnifiedLogLib.ReadAPFSTime(log[3])
-            log[18] = '{0!s}'.format(log[18])
-            log[19] = '{0!s}'.format(log[19])
-
-            # TODO: cache queries to use executemany
-            try:
-                cursor = self._connection.cursor()
-                cursor.execute(self._INSERT_LOGS_VALUES_QUERY, log)
-
-            except sqlite3.Error:
-                logger.exception('Error inserting data into database')
+        self.WriteLogEntries([log])
 
 
 class TSVFileOutputWriter(object):
@@ -232,6 +252,15 @@ class TSVFileOutputWriter(object):
             return False
         return True
 
+    def WriteLogEntries(self, logs):
+        '''Writes several Unified Log entries.
+
+        Args:
+          logs (???): list of log entries:
+        '''
+        for log in logs:
+            self.WriteLogEntry(log)
+
     def WriteLogEntry(self, log):
         '''Writes a Unified Log entry.
 
@@ -290,9 +319,13 @@ class UnifiedLogReader(object):
 
     # TODO: remove log_list_process_func callback from TraceV3.Parse() 
     def _ProcessLogsList(self, logs, tracev3):
-        for log_entry in logs:
-            self._output_writer.WriteLogEntry(log_entry)
-            self.total_logs_processed += 1
+        if isinstance(self._output_writer, SQLiteDatabaseOutputWriter):
+            self._output_writer.WriteLogEntries(logs)
+            self.total_logs_processed += len(logs)
+        else:
+            for log_entry in logs:
+                self._output_writer.WriteLogEntry(log_entry)
+                self.total_logs_processed += 1
 
     def _ReadTraceV3File(self, tracev3_path, output_writer):
         '''Reads a tracev3 file.
@@ -327,8 +360,11 @@ class UnifiedLogReader(object):
 
             elif (directory_entry.lower().endswith('.tracev3') and
                   not directory_entry.startswith('._')):
-                logger.info("Trying to read file - %s", directory_entry_path)
-                self._ReadTraceV3File(directory_entry_path, output_writer)
+                if os.path.getsize(directory_entry_path) > 0:
+                    logger.info("Trying to read file - %s", directory_entry_path)
+                    self._ReadTraceV3File(directory_entry_path, output_writer)
+                else:
+                    logger.info("Skipping empty file - %s", directory_entry_path)
 
     def ReadDscFiles(self, uuidtext_folder_path):
         '''Reads the dsc files.

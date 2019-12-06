@@ -150,8 +150,8 @@ class CachedFiles(object):
             entries = self.vfs.listdir(dsc_path)
             for dsc_name in entries:
                 if len(dsc_name) == 32:                    
-                    dsc_path = self.vfs.get_virtual_file(self.vfs.path_join(dsc_path, dsc_name), 'Dsc')
-                    dsc = dsc_file.Dsc(dsc_path)
+                    dsc_path_obj = self.vfs.get_virtual_file(self.vfs.path_join(dsc_path, dsc_name), 'Dsc')
+                    dsc = dsc_file.Dsc(dsc_path_obj)
                     dsc.Parse()
                     self.cached_dsc[dsc_name] = dsc
 

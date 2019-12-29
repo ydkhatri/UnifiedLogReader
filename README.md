@@ -6,7 +6,7 @@ A parser for Unified logging .tracev3 files.
 
 ### pre-alpha (experimental)
 
-_This is a work in progress.. Currently this does not support the first version of tracev3 which is seen on macOS 10.12.0 (which uses catalog v2). It has been tested to work on catalog v3 files used in macOS 10.12.5 upto the current 10.14.3. Also tested on iOS 12.x successfully._
+_This is a work in progress.. Currently this does not support the first version of tracev3 which is seen on macOS 10.12.0 (which uses catalog v2). It has been tested to work on catalog v3 files used in macOS 10.12.5 upto the current 10.15. Also tested on iOS 12.x successfully._
 
 ## License
 

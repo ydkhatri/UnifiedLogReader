@@ -451,7 +451,7 @@ class TraceV3(data_format.BinaryDataFormat):
         
         return data
 
-    def ReadLogDataBuffer(self, buffer, buf_size, strings_buffer):
+    def ReadLogDataBuffer(self, buffer, buf_size, strings_buffer, has_context_data):
         '''Returns a list of items read as [ type, size, raw_value_binary_string ]'''
         data = []
         data_descriptors=[] # [ (data_index, offset, size, data_type), .. ]
@@ -492,6 +492,30 @@ class TraceV3(data_format.BinaryDataFormat):
                 break
             pos += item_size
             items_read += 1
+        # Below code is unused for now. Skipping reading the backtrace
+        # if has_context_data: # there will be context data next, then the data
+        #     ctx_unk1, ctx_unk2, ctx_unk3, ctx_unique_uuid_count, ctx_total_count = struct.unpack('<BBBBH', buffer[pos:pos+6])
+        #     pos += 6
+        #     uuids = []
+        #     offsets = []
+        #     context_data = [] # [ (uuid, offset), (..), ..]
+        #     for x in range(ctx_unique_uuid_count):
+        #         uuid = binascii.hexlify(buffer[pos:pos+16]).upper()
+        #         #uuid = buffer[pos:pos+16].hex().upper() # for py 3
+        #         uuids.append(uuid)
+        #         pos += 16
+        #     for x in range(ctx_total_count):
+        #         off = struct.unpack('<I', buffer[pos:pos+4])[0]
+        #         offsets.append(off)
+        #         pos += 4
+        #     for x in range(ctx_total_count):
+        #         uuid_index = struct.unpack('<B', buffer[pos:pos+1])[0]
+        #         if uuid_index >= ctx_unique_uuid_count:
+        #             log.error('something went wrong')
+        #             break
+        #         pos += 1
+        #         context_data.append( (uuids[uuid_index], offsets[x]) )
+                
         pos_debug = pos
         if data_descriptors:
             for desc in data_descriptors:
@@ -790,6 +814,8 @@ class TraceV3(data_format.BinaryDataFormat):
                     # processing
                     log_file_pos = debug_file_pos + pos + pos2 - 24
                     #logger.debug('log_file_pos=0x{:X}'.format(log_file_pos))
+                    if log_file_pos == 0x3628:
+                        logger.debug("here")
 
                     ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
                     time = ts.time_stamp + ct - ts.continuousTime
@@ -817,7 +843,7 @@ class TraceV3(data_format.BinaryDataFormat):
                         act_id = [0]
                         has_msg_in_uuidtext = False # main_exe     [apple]
                         has_ttl = False             # has_rules    [apple]
-                        has_act_id = False
+                        has_act_id = False          # has_current_aid [apple]
                         has_subsys = False
                         has_alternate_uuid = False  # absolute     [apple]
                         has_msg_in_dsc = False      # shared_cache [apple]
@@ -826,6 +852,7 @@ class TraceV3(data_format.BinaryDataFormat):
                         has_private_data = False
                         has_sp_name = False
                         has_data_ref = False
+                        has_context_data = False    # for backtrace context
                         has_activity_unk = False # unknown flag
                         is_activity = False
                         log_type = 'Default'
@@ -854,6 +881,7 @@ class TraceV3(data_format.BinaryDataFormat):
                             logger.info('Unknown flag for u2 encountered u2=0x{:4X} @ 0x{:X} ct={}'.format(u2, log_file_pos, ct))
                             #raise ValueError('Unk u2 flag')
                         if u2 & 0x8000: has_sp_name = True
+                        if u2 & 0x1000: has_context_data = True
 
                         if u2 & 0x0800: has_data_ref = True
                         if u2 & 0x0400: has_ttl = True
@@ -1061,7 +1089,7 @@ class TraceV3(data_format.BinaryDataFormat):
                             elif u1 & 0x3 == 0x3: # data_descriptor_at_buffer_end
                                 log_data = self.ReadLogDataBuffer2(buffer[pos + pos3 : pos + pos3 + log_data_len2], log_data_len2, strings_slice)
                             else:
-                                log_data = self.ReadLogDataBuffer(buffer[pos + pos3 : pos + pos3 + log_data_len2], log_data_len2, strings_slice)
+                                log_data = self.ReadLogDataBuffer(buffer[pos + pos3 : pos + pos3 + log_data_len2], log_data_len2, strings_slice, has_context_data)
                         else:
                             log_data = None
                         if has_data_ref:
@@ -1070,7 +1098,7 @@ class TraceV3(data_format.BinaryDataFormat):
                             if log_data:
                                 # let's delete it now from the dict, there should only be one reference!
                                 del self.large_data[unique_ref]
-                                log_data = log_data = self.ReadLogDataBuffer(log_data, len(log_data), '')
+                                log_data = log_data = self.ReadLogDataBuffer(log_data, len(log_data), '', has_context_data)
                             else:
                                 logger.error('Data Reference not found for unique_ref=0x{:X} ct={}!'.format(unique_ref, ct))
                                 format_str = "<decode: missing data>"

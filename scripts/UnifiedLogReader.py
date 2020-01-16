@@ -25,12 +25,12 @@
 #
 # Script Name  : UnifiedLogReader.py
 # Author       : Yogesh Khatri
-# Last Updated : 2019-12-06
-# Purpose/Usage: This script will read unified logs. Tested on python2.7
+# Last Updated : 2020-01-15
+# Purpose/Usage: This script will read unified logs. Tested on python2.7 & 3.7
 #
 # Notes:
 # Currently this is tested on version 17(0x11) of the tracev3 file used in
-# macOS Sierra (10.12.5) and above (including Mojave 10.14.2). It will not
+# macOS Sierra (10.12.5) and above (including Catalina 10.15). It will not
 # work on Sierra (10.12) as it uses version 14(0xE), a later update will
 # address this. Also tested on iOS 12.4 logs.
 #
@@ -423,7 +423,7 @@ def Main():
     '''
     description = (
         'UnifiedLogReader is a tool to read macOS Unified Logging tracev3 files.\n'
-        'This is version {0:s} tested on macOS 10.12.5 - 10.14.3.\n\n'
+        'This is version {0:s} tested on macOS 10.12.5 - 10.15 and iOS 12.\n\n'
         'Notes:\n-----\n'
         'If you have a .logarchive, then point uuidtext_path to the .logarchive folder, \n'
         'the timesync folder is within the logarchive folder').format(UnifiedLog.__version__)

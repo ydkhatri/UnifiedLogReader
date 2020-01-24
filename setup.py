@@ -40,11 +40,12 @@ setup(
     maintainer='Yogesh Khatri',
     maintainer_email='yogesh@swiftforensics.com',
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 2 - Alpha',
         'Environment :: Console',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
     ],
+    python_requires='>=3.6',
     packages=find_packages('.', exclude=[
         'tests', 'tests.*']),
     package_dir={

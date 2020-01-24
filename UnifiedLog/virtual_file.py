@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 '''The virtual file object.'''
 
-from __future__ import unicode_literals
-
 import os
 
 from UnifiedLog import logger
@@ -30,7 +28,7 @@ class VirtualFile(object):
             logger.debug('Trying to read {} file {}'.format(self.file_type, self.path))
             self.file_pointer = open(self.path, mode)
             return self.file_pointer
-        except Exception as ex:
+        except (IOError, OSError) as ex:
             if str(ex).find('No such file') == -1:
                 logger.exception('Failed to open file {}'.format(self.path))
             else:

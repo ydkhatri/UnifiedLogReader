@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 '''The uuidtext file parser.'''
 
-from __future__ import unicode_literals
-
 import struct
 import os
 import posixpath

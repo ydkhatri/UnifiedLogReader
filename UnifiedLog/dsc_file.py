@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 '''The Shared-Cache strings (dsc) file parser.'''
 
-from __future__ import unicode_literals
-
 import os
 import posixpath
 import struct

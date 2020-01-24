@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 '''Shared functionality for parsing binary data formats.'''
 
-from __future__ import unicode_literals
-
 import datetime
 import struct
 
@@ -16,10 +14,10 @@ class BinaryDataFormat(object):
         '''Returns datetime object, or empty string upon error'''
         if mac_apfs_time not in ( 0, None, ''):
             try:
-                if type(mac_apfs_time) in (str, unicode):
+                if type(mac_apfs_time) == str:
                     mac_apfs_time = float(mac_apfs_time)
                 return datetime.datetime(1970, 1, 1) + datetime.timedelta(seconds=mac_apfs_time/1000000000.)
-            except Exception as ex:
+            except (ValueError, UnicodeDecodeError, TypeError) as ex:
                 logger.error("ReadAPFSTime() Failed to convert timestamp from value " + str(mac_apfs_time) + " Error was: " + str(ex))
         return ''
 
@@ -35,7 +33,7 @@ class BinaryDataFormat(object):
                 string = data.decode('utf8')
             else:
                 string = data[0:null_pos].decode('utf8')
-        except:
+        except (ValueError, UnicodeDecodeError):
             logger.exception('Error reading C-String')
 
         return string
@@ -56,7 +54,7 @@ class BinaryDataFormat(object):
                 string = data.decode('utf8')
             else:
                 string = data[0:null_pos].decode('utf8')
-        except:
+        except (ValueError, UnicodeDecodeError):
             logger.exception('Error reading C-String')
         return string, null_pos
 
@@ -66,8 +64,8 @@ class BinaryDataFormat(object):
         size = len(data)
         if size < 8:
             logger.error('Not a windows sid')
-        rev = struct.unpack("<B", data[0])[0]
-        num_sub_auth = struct.unpack("<B", data[1])[0]
+        rev = struct.unpack("<B", data[0:1])[0]
+        num_sub_auth = struct.unpack("<B", data[1:2])[0]
         authority = struct.unpack(">I", data[4:8])[0]
 
         if size < (8 + (num_sub_auth * 4)):

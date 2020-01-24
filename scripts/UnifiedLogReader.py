@@ -25,8 +25,8 @@
 #
 # Script Name  : UnifiedLogReader.py
 # Author       : Yogesh Khatri
-# Last Updated : 2020-01-15
-# Purpose/Usage: This script will read unified logs. Tested on python2.7 & 3.7
+# Last Updated : 2020-01-24
+# Purpose/Usage: This script will read unified logs. Tested on python 3.7
 #
 # Notes:
 # Currently this is tested on version 17(0x11) of the tracev3 file used in
@@ -34,9 +34,6 @@
 # work on Sierra (10.12) as it uses version 14(0xE), a later update will
 # address this. Also tested on iOS 12.4 logs.
 #
-
-from __future__ import print_function
-#from __future__ import unicode_literals
 
 import abc
 import argparse
@@ -189,7 +186,7 @@ class SQLiteDatabaseOutputWriter(object):
 class TSVFileOutputWriter(object):
     '''Output writer that writes output to a TSV file.'''
 
-    _HEADER_ALL = u'\t'.join([
+    _HEADER_ALL = '\t'.join([
         'SourceFile', 'LogFilePos', 'ContinousTime', 'Time', 'ThreadId',
         'LogType', 'ActivityId', 'ParentActivityId', 'PID', 'EUID', 'TTL',
         'ProcessName', 'SenderName', 'Subsystem', 'Category', 'SignpostName',
@@ -198,8 +195,8 @@ class TSVFileOutputWriter(object):
 
     # Note that this technically is not tab-separated values format.
     _HEADER_DEFAULT = (
-        u'Timestamp                  Thread     Type        '
-        u'Activity             PID    TTL  Message')
+        'Timestamp                  Thread     Type        '
+        'Activity             PID    TTL  Message')
 
     def __init__(self, path, mode='DEFAULT'):
         '''Initializes a TSV file output writer.
@@ -272,13 +269,13 @@ class TSVFileOutputWriter(object):
 
             try:
                 if self._mode == 'ALL':
-                    log[18] = u'{0!s}'.format(log[18]).upper()
-                    log[19] = u'{0!s}'.format(log[19]).upper()
+                    log[18] = '{0!s}'.format(log[18]).upper()
+                    log[19] = '{0!s}'.format(log[19]).upper()
 
                     self._file_object.write((
-                        u'{}\t0x{:X}\t{}\t{}\t0x{:X}\t{}\t0x{:X}\t0x{:X}\t{}\t'
-                        u'{}\t{}\t({})\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t'
-                        u'{}').format(
+                        '{}\t0x{:X}\t{}\t{}\t0x{:X}\t{}\t0x{:X}\t0x{:X}\t{}\t'
+                        '{}\t{}\t({})\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t'
+                        '{}').format(
                             log[0], log[1], log[2], log[3], log[4], log[5],
                             log[6], log[7], log[8], log[9], log[10], log[11],
                             log[12], log[13], log[14], log[15], log[16],
@@ -291,13 +288,13 @@ class TSVFileOutputWriter(object):
                         signpost += '[' + log[16] + ']'
                     msg = (signpost + ' ') if signpost else ''
                     msg += log[11] + ' ' + (( '(' + log[12] + ') ') if log[12] else '')
-                    if len(log[13]) or len (log[14]):
+                    if len(log[13]) or len(log[14]):
                         msg += '[' + log[13] + ':' + log[14] + '] '
                     msg += log[22]
 
                     self._file_object.write((
-                        u'{time:26} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} '
-                        u'{li[8]:<6} {li[10]:<4} {message}').format(
+                        '{time:26} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} '
+                        '{li[8]:<6} {li[10]:<4} {message}').format(
                             li=log, time=log[3], message=msg))
 
             except (IOError, OSError):
@@ -466,7 +463,7 @@ def Main():
         print ('Creating output folder {}'.format(output_path))
         os.makedirs(output_path)
 
-    log_file_path = os.path.join(output_path, "Log." + unicode(time.strftime("%Y%m%d-%H%M%S")) + ".txt")
+    log_file_path = os.path.join(output_path, "Log." + time.strftime("%Y%m%d-%H%M%S") + ".txt")
 
     # log
     if args.log_level:

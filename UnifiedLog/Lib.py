@@ -33,8 +33,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from __future__ import unicode_literals
-
 import binascii
 import datetime
 import os
@@ -57,7 +55,7 @@ def ReadAPFSTime(mac_apfs_time): # Mac APFS timestamp is nano second time epoch 
     '''Returns datetime object, or empty string upon error'''
     if mac_apfs_time not in ( 0, None, ''):
         try:
-            if type(mac_apfs_time) in (str, unicode):
+            if type(mac_apfs_time) == str:
                 mac_apfs_time = float(mac_apfs_time)
             return datetime.datetime(1970, 1, 1) + datetime.timedelta(seconds=mac_apfs_time/1000000000.)
         except Exception as ex:
@@ -84,9 +82,9 @@ def DecompressTraceV3(trace_file, out_file):
             chunk_data_incl_header = trace_file.read(16 + struct_len)
             if tag == b'\x00\x10\x00\x00': # header
                 out_file.write(chunk_data_incl_header) # boot_uuid header, write to output directly
-            elif tag[0] == b'\x0B':
+            elif tag[0] == 0x0B:
                 out_file.write(chunk_data_incl_header) # uncompressed, write to output directly
-            elif tag[0] == b'\x0D':
+            elif tag[0] == 0x0D:
                 uncompressed = DecompressChunkData(chunk_data_incl_header[16:], struct_len)
                 out_file.write(chunk_data_incl_header[0:8]) # Same Header !
                 out_file.write(struct.pack('<Q', len(uncompressed))) # New size
@@ -101,7 +99,7 @@ def DecompressTraceV3(trace_file, out_file):
             trace_file.seek(begin_pos + 16 + struct_len)
             tag = trace_file.read(4)
             index += 1
-    except Exception as ex:
+    except (ValueError, lz4.block.LZ4BlockError) as ex:
         logger.exception('')
         return False
     return True

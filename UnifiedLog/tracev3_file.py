@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 '''The tracev3 file parser.'''
 
-from __future__ import unicode_literals
-
 import binascii
 import lz4.block
 import ipaddress
@@ -274,7 +272,7 @@ class TraceV3(data_format.BinaryDataFormat):
             file_path_data = chunk_data[data_offset:end_data_offset]
             data_offset = end_data_offset
 
-            file_path = binascii.hexlify(file_path_data)
+            file_path = binascii.hexlify(file_path_data).decode('utf8')
             file_path = file_path.upper()
 
             self.ProcessReferencedFile(file_path, catalog)
@@ -500,7 +498,7 @@ class TraceV3(data_format.BinaryDataFormat):
         #     offsets = []
         #     context_data = [] # [ (uuid, offset), (..), ..]
         #     for x in range(ctx_unique_uuid_count):
-        #         uuid = binascii.hexlify(buffer[pos:pos+16]).upper()
+        #         uuid = binascii.hexlify(buffer[pos:pos+16]).decode('utf8')upper()
         #         #uuid = buffer[pos:pos+16].hex().upper() # for py 3
         #         uuids.append(uuid)
         #         pos += 16
@@ -659,17 +657,17 @@ class TraceV3(data_format.BinaryDataFormat):
                             msg += str(uuid).upper()
                     elif custom_specifier.find('odtypes:mbr_details') > 0:
                         unk = raw_data[0]
-                        if unk == 'D': # 0x44
+                        if unk == 0x44: # 'D'
                             group, pos = self._ReadCStringAndEndPos(raw_data[1:], len(raw_data))
                             pos += 2
                             domain = self._ReadCString(raw_data[pos:], len(raw_data) - pos)
                             msg += 'group: {}@{}'.format(group, domain)
-                        elif unk == '#': #0x23
+                        elif unk == 0x23 # '#'
                             uid = struct.unpack("<I", raw_data[1:5])[0]
                             domain = self._ReadCString(raw_data[5:], len(raw_data) - 5)
                             msg += 'user: {}@{}'.format(uid, domain)
                         else:
-                            logger.error("Unknown value for mbr_details found 0x{} in log @ 0x{:X}".format(unk.encode('hex'), log_file_pos))
+                            logger.error("Unknown value for mbr_details found 0x{:X} in log @ 0x{:X}".format(unk, log_file_pos))
                     elif custom_specifier.find('odtypes:nt_sid_t') > 0:
                         msg += self._ReadNtSid(raw_data)
                     elif custom_specifier.find('location:SqliteResult') > 0:
@@ -692,7 +690,7 @@ class TraceV3(data_format.BinaryDataFormat):
                         if family == 0x1E: # AF_INET6 ipv6
                             port, flowinfo = struct.unpack("<HI", raw_data[2:8])
                             ipv6 = struct.unpack(">8H", raw_data[8:24])
-                            ipv6_str = u'{:X}:{:X}:{:X}:{:X}:{:X}:{:X}:{:X}:{:X}'.format(ipv6[0],ipv6[1],ipv6[2],ipv6[3],ipv6[4],ipv6[5],ipv6[6],ipv6[7])#must be unicode
+                            ipv6_str = '{:X}:{:X}:{:X}:{:X}:{:X}:{:X}:{:X}:{:X}'.format(ipv6[0],ipv6[1],ipv6[2],ipv6[3],ipv6[4],ipv6[5],ipv6[6],ipv6[7])#must be unicode
                             msg += ipaddress.ip_address(ipv6_str).compressed
                         elif family == 0x02: # AF_INET ipv4
                             port = struct.unpack("<H", raw_data[2:4])
@@ -972,7 +970,7 @@ class TraceV3(data_format.BinaryDataFormat):
                                     logger.error('no uuid found for absolute pc - uuid_file_id was {} u5=0x{:X} fmt_str_v_offset=0x{:X} @ 0x{:X} ct={}'.format(uuid_file_id, u5, fmt_str_v_offset, log_file_pos, ct))
                                     format_str = '<compose failure [missing precomposed log]>' # error message from log utility
                             else:             # UUID
-                                file_path = binascii.hexlify(buffer[pos + pos3 : pos + pos3 + 16]).upper()
+                                file_path = binascii.hexlify(buffer[pos + pos3 : pos + pos3 + 16]).decode('utf8').upper()
                                 pos3 += 16
                                 log_data_len2 -= 16
                                 ## try to get format_str and lib from uuidtext file
@@ -1118,7 +1116,7 @@ class TraceV3(data_format.BinaryDataFormat):
                                         imageOffset, imageUUID, processImageUUID, senderImagePath, processImagePath,
                                         log_msg                            
                                     ])
-                    except Exception as ex:
+                    except (ValueError, IOError) as ex:
                         logger.exception("Exception while processing log @ 0x{:X} ct={}, skipping that log entry!".format(log_file_pos, ct))
                     ##
                     debug_log_count += 1
@@ -1179,8 +1177,8 @@ class TraceV3(data_format.BinaryDataFormat):
                     if data_type == 1: # plist  # serialized NS/CF object [Apple]
                         try:
                             plist = biplist.readPlistFromString(data)
-                            log_msg = unicode(plist)
-                        except:
+                            log_msg = str(plist)
+                        except InvalidPlistException:
                             logger.exception('Problem reading plist from log @ 0x{:X} ct={}'.format(log_file_pos, ct))
                     elif data_type == 2:  #custom object, not being read by log utility in many cases!
                         logger.error('Did not read data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
@@ -1213,7 +1211,7 @@ class TraceV3(data_format.BinaryDataFormat):
                                 imageOffset, imageUUID, processImageUUID, senderImagePath, processImagePath, 
                                 name + "\n" + log_msg                        
                                 ])
-                except:
+                except (ValueError, TypeError):
                     logger.exception("Exception while processing logtype 'State' @ 0x{:X} ct={}, skipping that log entry!".format(log_file_pos, ct))
                 debug_log_count += 1
 
@@ -1308,6 +1306,6 @@ class TraceV3(data_format.BinaryDataFormat):
             # outside loop, end of file reached, write remaining logs
             if log_list_process_func and (len(logs) > 0):
                 log_list_process_func(logs, self)
-        except:
+        except (struct.error, lz4.block.LZ4BlockError, ValueError, IOError, KeyError):
             logger.exception('traceV3 Parser error')
         return True

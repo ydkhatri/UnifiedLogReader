@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 '''Several resource objects.'''
 
-from __future__ import unicode_literals
-
 from UnifiedLog import logger
 
 

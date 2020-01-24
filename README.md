@@ -4,7 +4,7 @@ A parser for Unified logging .tracev3 files.
 
 ## Project Status
 
-### pre-alpha (experimental)
+### alpha (experimental)
 
 _This is a work in progress.. Currently this does not support the first version of tracev3 which is seen on macOS 10.12.0 (which uses catalog v2). It has been tested to work on catalog v3 files used in macOS 10.12.5 upto the current 10.15. Also tested on iOS 12.x successfully._
 
@@ -14,7 +14,7 @@ MIT
 
 ## Requirements & Installation
 
-Python 2.7 and the following modules
+Python 3.6+ and the following modules
 * lz4
 * biplist
 * ipaddress
@@ -44,13 +44,13 @@ _TSV_DEFAULT_ gives only those fields shown by 'log' utility (with no options sp
 
 
 ```
-G:\>c:\Python27\python.exe c:\Github\UnifiedLogReader\UnifiedLogReader.py -h
+G:\>c:\Python37-32\python.exe c:\Github\UnifiedLogReader\UnifiedLogReader.py -h
 usage: UnifiedLogReader.py [-h] [-f OUTPUT_FORMAT] [-l LOG_LEVEL]
                            uuidtext_path timesync_path tracev3_path
                            output_path
 
 UnifiedLogReader is a tool to read macOS Unified Logging tracev3 files.
-This is version 1.0 tested on macOS 10.12.5 - 10.14.3.
+This is version 0.3 tested on macOS 10.12.5 - 10.15 and iOS 12.
 
 Notes:
 -----

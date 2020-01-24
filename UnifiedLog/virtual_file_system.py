@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 '''The virtual file system.'''
 
-from __future__ import unicode_literals
-
 import os
 
 

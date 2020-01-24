@@ -183,8 +183,8 @@ class SQLiteDatabaseOutputWriter(object):
         self.WriteLogEntries([log])
 
 
-class TSVFileOutputWriter(object):
-    '''Output writer that writes output to a TSV file.'''
+class FileOutputWriter(object):
+    '''Output writer that writes output to a file.'''
 
     _HEADER_ALL = '\t'.join([
         'SourceFile', 'LogFilePos', 'ContinousTime', 'Time', 'ThreadId',
@@ -193,25 +193,24 @@ class TSVFileOutputWriter(object):
         'SignpostString', 'ImageOffset', 'ImageUUID', 'ProcessImageUUID',
         'SenderImagePath', 'ProcessImagePath', 'LogMessage'])
 
-    # Note that this technically is not tab-separated values format.
     _HEADER_DEFAULT = (
         'Timestamp                  Thread     Type        '
         'Activity             PID    TTL  Message')
 
-    def __init__(self, path, mode='DEFAULT'):
-        '''Initializes a TSV file output writer.
+    def __init__(self, path, mode='LOG_DEFAULT'):
+        '''Initializes a file output writer.
 
         Args:
-          path (str): path of the TSV file.
-          mode (Optional[str]): output mode, which can be DEFAULT or ALL.
+          path (str): path of the file.
+          mode (Optional[str]): output mode, which can be LOG_DEFAULT or TSV_ALL.
 
         Raises:
           ValueError: if mode is unsupported.
         '''
-        if mode not in ('ALL', 'DEFAULT'):
+        if mode not in ('TSV_ALL', 'LOG_DEFAULT'):
             raise ValueError('Unsupported mode')
 
-        super(TSVFileOutputWriter, self).__init__()
+        super(FileOutputWriter, self).__init__()
         self._file_object = None
         self._mode = mode
         self._path = path
@@ -237,7 +236,7 @@ class TSVFileOutputWriter(object):
             # using text mode so we don't have to care about end-of-line character
             self._file_object = io.open(self._path, 'wt', encoding='utf-8')
             try:
-                if self._mode == 'ALL':
+                if self._mode == 'TSV_ALL':
                     self._file_object.write(self._HEADER_ALL)
                 else:
                     self._file_object.write(self._HEADER_DEFAULT)
@@ -268,7 +267,7 @@ class TSVFileOutputWriter(object):
             log[3] = UnifiedLogLib.ReadAPFSTime(log[3])
 
             try:
-                if self._mode == 'ALL':
+                if self._mode == 'TSV_ALL':
                     log[18] = '{0!s}'.format(log[18]).upper()
                     log[19] = '{0!s}'.format(log[19]).upper()
 
@@ -434,9 +433,9 @@ def Main():
 
     arg_parser.add_argument(
          '-f', '--output_format', action='store', choices=(
-             'SQLITE', 'TSV_ALL', 'TSV_DEFAULT'),
-         metavar='FORMAT', default='TSV_DEFAULT', help=(
-             'Output format: SQLITE, TSV_ALL, TSV_DEFAULT  (Default is TSV_DEFAULT)'), type=str.upper)
+             'SQLITE', 'TSV_ALL', 'LOG_DEFAULT'),
+         metavar='FORMAT', default='LOG_DEFAULT', help=(
+             'Output format: SQLITE, TSV_ALL, LOG_DEFAULT  (Default is LOG_DEFAULT)'), type=str.upper)
 
     arg_parser.add_argument('-l', '--log_level', help='Log levels: INFO, DEBUG, WARNING, ERROR (Default is INFO)')
 
@@ -503,10 +502,10 @@ def Main():
         database_path = os.path.join(output_path, 'unifiedlogs.sqlite')
         output_writer = SQLiteDatabaseOutputWriter(database_path)
 
-    elif args.output_format.startswith('TSV_'):
+    elif args.output_format in ('TSV_ALL', 'LOG_DEFAULT'):
         file_path = os.path.join(output_path, 'logs.txt')
-        output_writer = TSVFileOutputWriter(
-            file_path, mode=args.output_format[4:])
+        output_writer = FileOutputWriter(
+            file_path, mode=args.output_format)
 
     if not output_writer.Open():
         return False

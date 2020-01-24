@@ -662,7 +662,7 @@ class TraceV3(data_format.BinaryDataFormat):
                             pos += 2
                             domain = self._ReadCString(raw_data[pos:], len(raw_data) - pos)
                             msg += 'group: {}@{}'.format(group, domain)
-                        elif unk == 0x23 # '#'
+                        elif unk == 0x23: # '#'
                             uid = struct.unpack("<I", raw_data[1:5])[0]
                             domain = self._ReadCString(raw_data[5:], len(raw_data) - 5)
                             msg += 'user: {}@{}'.format(uid, domain)

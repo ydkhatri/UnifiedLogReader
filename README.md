@@ -34,13 +34,13 @@ The script needs access to files from 3 folders -
 
 The tracev3 files are located within the diagnostics folder. If you have a disk image, just extract the diagnostics and uuidtext folders (shown at paths above) and provide it to this script.
 
-Currently the script supports TSV and sqlite output.
+Currently the script supports the default log output format, TSV and sqlite output.
 
 ## Output options
 
 _SQLITE_ gives you every available field in an sqlite db  
 _TSV_ALL_ gives you every available field in a tab-seperated file  
-_TSV_DEFAULT_ gives only those fields shown by 'log' utility (with no options specified)
+_LOG_DEFAULT_ gives only those fields shown by 'log' utility (with no options specified)
 
 
 ```
@@ -66,7 +66,7 @@ positional arguments:
 optional arguments:
   -h, --help            show this help message and exit
   -f OUTPUT_FORMAT, --output_format OUTPUT_FORMAT
-                        SQLITE, TSV_ALL, TSV_DEFAULT  (Default is TSV_DEFAULT)
+                        SQLITE, TSV_ALL, LOG_DEFAULT  (Default is LOG_DEFAULT)
   -l LOG_LEVEL, --log_level LOG_LEVEL
                         Log levels: INFO, DEBUG, WARNING, ERROR (Default is INFO)
 ```

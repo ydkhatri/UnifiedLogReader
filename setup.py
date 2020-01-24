@@ -40,10 +40,11 @@ setup(
     maintainer='Yogesh Khatri',
     maintainer_email='yogesh@swiftforensics.com',
     classifiers=[
-        'Development Status :: 2 - Alpha',
+        'Development Status :: 3 - Alpha',
         'Environment :: Console',
+        "License :: OSI Approved :: MIT License",
         'Operating System :: OS Independent',
-        'Programming Language :: Python',
+        'Programming Language :: Python :: 3',
     ],
     python_requires='>=3.6',
     packages=find_packages('.', exclude=[

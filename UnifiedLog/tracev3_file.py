@@ -634,7 +634,7 @@ class TraceV3(data_format.BinaryDataFormat):
                     else:
                         try:
                             chars = raw_data.decode('utf8').rstrip('\x00')
-                        except Exception as ex:
+                        except UnicodeDecodeError as ex:
                             logger.error('Error decoding utf8 in log @ 0x{:X}, data was "{}", error was {}'.format(log_file_pos, binascii.hexlify(raw_data), str(ex)))
                             chars = ''
                         chars = ('%'+ (flags_width_precision if flags_width_precision.find('*')==-1 else '')  + "s") % chars # Python does not like '%.*s'
@@ -699,8 +699,10 @@ class TraceV3(data_format.BinaryDataFormat):
                             ipv4 = struct.unpack("<BBBB", raw_data[4:8])
                             ipv4_str = '{}.{}.{}.{}'.format(ipv4[0],ipv4[1],ipv4[2],ipv4[3])
                             msg += ipv4_str # TODO- test this, not seen yet!
+                        elif size == 0:
+                            pass
                         else:
-                            logger.error("Unknown sock family value 0x{:X} in log @ 0x{:X}".format(family, log_file_pos))
+                            logger.error("Unknown sock family value 0x{:X} size 0x{:X} in log @ 0x{:X}".format(family, size, log_file_pos))
                     # elif custom_specifier.find('_CLDaemonStatusStateTrackerState') > 0:
                     #     msg += Read_CLDaemonStatusStateTrackerState(raw_data)
                     elif custom_specifier.find('_CLClientManagerStateTrackerState') > 0:
@@ -814,8 +816,6 @@ class TraceV3(data_format.BinaryDataFormat):
                     # processing
                     log_file_pos = debug_file_pos + pos + pos2 - 24
                     #logger.debug('log_file_pos=0x{:X}'.format(log_file_pos))
-                    if log_file_pos == 0x3628:
-                        logger.debug("here")
 
                     ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
                     time = ts.time_stamp + ct - ts.continuousTime

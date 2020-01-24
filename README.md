@@ -27,7 +27,7 @@ For development, if you only need the dependencies, use `pip install -r requirem
 
 ## Usage
 
-The script needs access to files from 3 folders -
+The script needs access to files from 3 folders _(same on iOS or macOS)_-
 * /private/var/db/diagnostics
 * /private/var/db/diagnostics/timesync
 * /private/var/db/uuidtext

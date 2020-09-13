@@ -237,9 +237,9 @@ class FileOutputWriter(object):
             self._file_object = io.open(self._path, 'wt', encoding='utf-8')
             try:
                 if self._mode == 'TSV_ALL':
-                    self._file_object.write(self._HEADER_ALL)
+                    self._file_object.write(self._HEADER_ALL + '\n')
                 else:
-                    self._file_object.write(self._HEADER_DEFAULT)
+                    self._file_object.write(self._HEADER_DEFAULT + '\n')
             except (IOError, OSError):
                 logger.exception('Error writing to output file')
                 return False
@@ -274,7 +274,7 @@ class FileOutputWriter(object):
                     self._file_object.write((
                         '{}\t0x{:X}\t{}\t{}\t0x{:X}\t{}\t0x{:X}\t0x{:X}\t{}\t'
                         '{}\t{}\t({})\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t'
-                        '{}').format(
+                        '{}\n').format(
                             log[0], log[1], log[2], log[3], log[4], log[5],
                             log[6], log[7], log[8], log[9], log[10], log[11],
                             log[12], log[13], log[14], log[15], log[16],
@@ -292,9 +292,9 @@ class FileOutputWriter(object):
                     msg += log[22]
 
                     self._file_object.write((
-                        '{time:26} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} '
-                        '{li[8]:<6} {li[10]:<4} {message}').format(
-                            li=log, time=log[3], message=msg))
+                        '{time} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} '
+                        '{li[8]:<6} {li[10]:<4} {message}\n').format(
+                            li=log, time=log[3], message=msg.replace('\n','')))
 
             except (IOError, OSError):
                 logger.exception('Error writing to output file')

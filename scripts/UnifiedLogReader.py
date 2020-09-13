@@ -294,7 +294,7 @@ class FileOutputWriter(object):
                     self._file_object.write((
                         '{time} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} '
                         '{li[8]:<6} {li[10]:<4} {message}\n').format(
-                            li=log, time=log[3], message=msg.replace('\n','')))
+                            li=log, time=log[3], message=msg.replace('\n',',')))
 
             except (IOError, OSError):
                 logger.exception('Error writing to output file')

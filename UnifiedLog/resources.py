@@ -99,7 +99,7 @@ class TimesyncHeader(object):
 
 class TimesyncItem(object):
     '''Timesync item object'''
-    def __init__(self, ts_unknown, cont_time, ts, bias, is_dst):
+    def __init__(self, ts_unknown, cont_time, ts, bias, is_dst,ts_numer, ts_denom):
         super(TimesyncItem, self).__init__()
         #self.signature = sig # "Ts  " = sig?
         self.ts_unknown = ts_unknown
@@ -107,3 +107,5 @@ class TimesyncItem(object):
         self.time_stamp = ts
         self.bias_minutes = bias
         self.is_dst = (is_dst == 1) # 1 = DST
+        self.ts_numerator   = ts_numer
+        self.ts_denominator = ts_denom

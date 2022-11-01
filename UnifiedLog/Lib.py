@@ -202,12 +202,12 @@ def ReadTimesyncFile(buffer, ts_list):
                 ts_obj = resources.Timesync(ts_header)
                 ts_list.append(ts_obj)
                 # Adding header timestamp as Ts type too with cont_time = 0
-                timesync_item = resources.TimesyncItem(0, 0, t_stamp, tz, is_dst)
+                timesync_item = resources.TimesyncItem(0, 0, t_stamp, tz, is_dst, ts_numer, ts_denom)
                 ts_obj.items.append(timesync_item)
             while pos < size:
                 if buffer[pos:pos+4] == b'Ts \x00':
                     ts_unknown, cont_time, t_stamp, bias, is_dst = struct.unpack("<IqqiI", buffer[pos+4:pos+32])
-                    timesync_item = resources.TimesyncItem(ts_unknown, cont_time, t_stamp, bias, is_dst)
+                    timesync_item = resources.TimesyncItem(ts_unknown, cont_time, t_stamp, bias, is_dst, ts_numer, ts_denom)
                     ts_obj.items.append(timesync_item)
                     logger.debug("TIMESYNC {}  0x{:016X}  {} {}".format(uuid, t_stamp, ReadAPFSTime(t_stamp), ts_unknown))
                 else:

@@ -396,8 +396,8 @@ class TraceV3(data_format.BinaryDataFormat):
             msg = 'lost {}{} unreliable messages from {} - {}  (exact start-approx. end)'
             sign, end_ct_rel, count = struct.unpack('<IQI', buffer[0:16])
             end_ct = ct_base + end_ct_rel
-            end_time = ts.time_stamp + end_ct - ts.continuousTime
-            start_time = ts.time_stamp + start_ct - ts.continuousTime
+            end_time = ts.time_stamp + (end_ct - ts.continuousTime)*(1.0*ts.ts_numerator)/ts.ts_denominator
+            start_time = ts.time_stamp + (start_ct - ts.continuousTime)*(1.0*ts.ts_numerator)/ts.ts_denominator
             if sign == 1:
                 sign == '>='
             elif sign == 4:
@@ -751,7 +751,7 @@ class TraceV3(data_format.BinaryDataFormat):
         ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
         time_string = 'N/A'
         if ts is not None:
-            time = ts.time_stamp + ct - ts.continuousTime
+            time = ts.time_stamp + (ct - ts.continuousTime)*(1.0*ts.ts_numerator)/ts.ts_denominator
             time_string = self._ReadAPFSTime(time)
         logger.debug("{} timestamp={}".format(msg, time_string))
 
@@ -816,7 +816,7 @@ class TraceV3(data_format.BinaryDataFormat):
                     #logger.debug('log_file_pos=0x{:X}'.format(log_file_pos))
 
                     ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
-                    time = ts.time_stamp + ct - ts.continuousTime
+                    time = ts.time_stamp + (ct - ts.continuousTime)*(1.0*ts.ts_numerator)/ts.ts_denominator
                     #logger.debug("Type 6001 LOG timestamp={}".format(self._ReadAPFSTime(time)))
                     try: # Big Exception block for any log uncaught exception
                         dsc_cache = catalog.FileObjects[proc_info.dsc_file_index] if (proc_info.dsc_file_index != -1) else None
@@ -1146,7 +1146,7 @@ class TraceV3(data_format.BinaryDataFormat):
                 pos2 += data_len
                 ## Debug print
                 ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
-                time = ts.time_stamp + ct - ts.continuousTime
+                time = ts.time_stamp + (ct - ts.continuousTime)*(1.0*ts.ts_numerator)/ts.ts_denominator
                 logger.debug("Type 6002 timestamp={} ({}), data_ref_id=0x{:X} @ 0x{:X}".format(self._ReadAPFSTime(time), ct, data_ref_id, log_file_pos))
                 pos += data_size
                 if (pos - start_skew) % 8:
@@ -1202,7 +1202,7 @@ class TraceV3(data_format.BinaryDataFormat):
                     processImageUUID = ut_cache.Uuid
 
                     ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
-                    time = ts.time_stamp + ct - ts.continuousTime
+                    time = ts.time_stamp + (ct - ts.continuousTime)*(1.0*ts.ts_numerator)/ts.ts_denominator
                     #logger.debug("Type 6003 timestamp={}".format(self._ReadAPFSTime(time)))
 
                     logs.append([self.file.filename, log_file_pos, ct, time, 0, log_type, 0, 0, \

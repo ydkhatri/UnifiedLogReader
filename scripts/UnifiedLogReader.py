@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Unified log reader
 # Copyright (c) 2018  Yogesh Khatri <yogesh@swiftforensics.com> (@swiftforensics)
@@ -232,8 +232,6 @@ class FileOutputWriter(object):
         logger.info('Creating output file %s', self._path)
 
         try:
-            # io.open() is portable between Python 2 and 3
-            # using text mode so we don't have to care about end-of-line character
             self._file_object = io.open(self._path, 'wt', encoding='utf-8')
             try:
                 if self._mode == 'TSV_ALL':
@@ -447,19 +445,19 @@ def Main():
     tracev3_path = args.tracev3_path.rstrip('\\/')
 
     if not os.path.exists(uuidtext_folder_path):
-        print('Exiting..UUIDTEXT Path not found {}'.format(uuidtext_folder_path))
+        print(f'Exiting..UUIDTEXT Path not found {uuidtext_folder_path}')
         return
 
     if not os.path.exists(timesync_folder_path):
-        print('Exiting..TIMESYNC Path not found {}'.format(timesync_folder_path))
+        print(f'Exiting..TIMESYNC Path not found {timesync_folder_path}')
         return
 
     if not os.path.exists(tracev3_path):
-        print('Exiting..traceV3 Path not found {}'.format(tracev3_path))
+        print(f'Exiting..traceV3 Path not found {tracev3_path}')
         return
 
     if not os.path.exists(output_path):
-        print ('Creating output folder {}'.format(output_path))
+        print (f'Creating output folder {output_path}')
         os.makedirs(output_path)
 
     log_file_path = os.path.join(output_path, "Log." + time.strftime("%Y%m%d-%H%M%S") + ".txt")

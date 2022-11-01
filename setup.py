@@ -48,6 +48,11 @@ setup(
     scripts=glob.glob(os.path.join('scripts', '[A-Za-z]*.py')),
     data_files=[
         ('share/doc/UnifiedLog', [
-            'LICENSE.txt', 'README.md']),
+            'LICENSE.md', 'README.md']),
+    ],
+    install_requires=[
+        "biplist >= 1.0.3",
+        "ipaddress",
+        "lz4 >= 0.10.0"
     ],
 )

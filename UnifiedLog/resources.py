@@ -46,6 +46,41 @@ class ExtraFileReference(object):
         self.id = id
 
 
+class LogEntry(object):
+    '''Log entry.'''
+
+    def __init__(
+        self, filename, log_file_pos, ct, time, thread, log_type, act_id,
+        parentActivityIdentifier, pid, euid, ttl, p_name, lib, sub_sys, cat,
+        signpost_name, signpost_string, imageOffset, imageUUID,
+        processImageUUID, senderImagePath, processImagePath, log_msg):
+        '''Initialized a log file entry.'''
+        super(LogEntry, self).__init__()
+        self.filename = filename
+        self.log_file_pos = log_file_pos
+        self.ct = ct
+        self.time = time
+        self.thread = thread
+        self.log_type = log_type
+        self.act_id = act_id
+        self.parentActivityIdentifier = parentActivityIdentifier
+        self.pid = pid
+        self.euid = euid
+        self.ttl = ttl
+        self.p_name = p_name
+        self.lib = lib
+        self.sub_sys = sub_sys
+        self.cat = cat
+        self.signpost_name = signpost_name
+        self.signpost_string = signpost_string
+        self.imageOffset = imageOffset
+        self.imageUUID = imageUUID
+        self.processImageUUID = processImageUUID
+        self.senderImagePath = senderImagePath
+        self.processImagePath = processImagePath
+        self.log_msg = log_msg
+
+
 class ProcInfo(object):
     def __init__(self, id, flags, uuid_file_index, dsc_file_index, proc_id1, proc_id2, pid, euid, u6, num_extra_uuid_refs, u8, num_subsys_cat_elements, u9, extra_file_refs):
         super(ProcInfo, self).__init__()
@@ -76,6 +111,8 @@ class ProcInfo(object):
 
 
 class Timesync(object):
+    '''Timesync'''
+
     def __init__(self, header):
         super(Timesync, self).__init__()
         self.header = header
@@ -84,6 +121,7 @@ class Timesync(object):
 
 
 class TimesyncHeader(object):
+    '''Timesync header'''
 
     def __init__(self, sig, unk1, boot_uuid, ts_numer, ts_denom, ts, bias, is_dst):
         super(TimesyncHeader, self).__init__()
@@ -98,7 +136,8 @@ class TimesyncHeader(object):
 
 
 class TimesyncItem(object):
-    '''Timesync item object'''
+    '''Timesync item'''
+
     def __init__(self, ts_unknown, cont_time, ts, bias, is_dst,ts_numer, ts_denom):
         super(TimesyncItem, self).__init__()
         #self.signature = sig # "Ts  " = sig?

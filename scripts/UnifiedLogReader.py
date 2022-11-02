@@ -321,12 +321,10 @@ class FileOutputWriter(object):
 
                     msg = ''.join(msg_parts)
 
-#Timestamp                  Thread     Type        Activity             PID    TTL  Message
-#2022-10-15 05:05:25.630817 0x3370af   Default     0x0                  2731   0    CommCenter (libARI.dylib) [com.apple.telephony.bb:ARI] ari: (forwardIndication:123) Indication(0x25808000) for client(IndicationReregistrationActor) Type(GCD) size(153) dispq(AriHostIPC:0x104386a70),
                     self._file_object.write((
                         u'{time:<26} {li.thread:<#10x} {li.log_type:<11} {li.act_id:<#20x} '
                         u'{li.pid:<6} {li.ttl:<4} {message}\n').format(
-                            li=log_entry, time=str(time_value), message=msg))
+                            li=log_entry, time=str(time_value), message=msg.replace('\n',',')))
 
             except (IOError, OSError):
                 logger.exception('Error writing to output file')

@@ -160,7 +160,7 @@ class SQLiteDatabaseOutputWriter(object):
         '''
         if self._connection:
             for log in logs:
-                WriteLogEntry(self, log)
+                self.WriteLogEntry(log)
 
     def WriteLogEntry(self, log_entry):
         '''Writes a Unified Log entry.
@@ -185,21 +185,12 @@ class SQLiteDatabaseOutputWriter(object):
 
             # TODO: cache queries to use executemany
             try:
-                cursor = self._connection.cursor()
+                cursor = self._connection.cursor() 
                 cursor.execute(self._INSERT_LOGS_VALUES_QUERY, values_tuple)
 
             except sqlite3.Error:
                 logger.exception('Error inserting data into database')
-
-
-    def WriteLogEntry(self, log):
-        '''Writes a Unified Log entry.
-
-        Args:
-          log (???): log entry:
-        '''
-        self.WriteLogEntries([log])
-
+            self._connection.commit()
 
 class FileOutputWriter(object):
     '''Output writer that writes output to a file.'''
@@ -311,10 +302,10 @@ class FileOutputWriter(object):
 
                     msg_parts.append('{0:s} '.format(log_entry.p_name))
                     if log_entry.lib:
-                      msg_parts.append('({0:s})'.format(log_entry.lib))
+                      msg_parts.append('({0:s}) '.format(log_entry.lib))
 
                     if log_entry.sub_sys or log_entry.cat:
-                      msg_parts.append('[{0:s}:{1:s}]'.format(
+                      msg_parts.append('[{0:s}:{1:s}] '.format(
                           log_entry.sub_sys, log_entry.cat))
 
                     msg_parts.append('{0:s} '.format(log_entry.log_msg))

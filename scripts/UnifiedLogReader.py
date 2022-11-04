@@ -152,6 +152,22 @@ class SQLiteDatabaseOutputWriter(object):
 
         return True
 
+    def log_entry_tuple(self, log_entry):
+        time_value = UnifiedLogLib.ReadAPFSTime(log_entry.time)
+        values_tuple = (
+            log_entry.filename, log_entry.log_file_pos, log_entry.ct,
+            time_value, log_entry.thread, log_entry.log_type,
+            log_entry.act_id, log_entry.parentActivityIdentifier,
+            log_entry.pid, log_entry.euid, log_entry.ttl,
+            log_entry.p_name, log_entry.lib, log_entry.sub_sys,
+            log_entry.cat, log_entry.signpost_name,
+            log_entry.signpost_string, log_entry.imageOffset,
+            '{0!s}'.format(log_entry.imageUUID),
+            '{0!s}'.format(log_entry.processImageUUID),
+            log_entry.senderImagePath, log_entry.processImagePath,
+            log_entry.log_msg)
+        return values_tuple
+
     def WriteLogEntries(self, logs):
         '''Writes several Unified Log entries.
 
@@ -159,8 +175,15 @@ class SQLiteDatabaseOutputWriter(object):
           logs (???): list of log entries:
         '''
         if self._connection:
-            for log in logs:
-                self.WriteLogEntry(log)
+            value_tuples = [self.log_entry_tuple(x) for x in logs]
+            # TODO: cache queries to use executemany
+            try:
+                cursor = self._connection.cursor() 
+                cursor.executemany(self._INSERT_LOGS_VALUES_QUERY, value_tuples)
+
+            except sqlite3.Error:
+                logger.exception('Error inserting data into database')
+            self._connection.commit()
 
     def WriteLogEntry(self, log_entry):
         '''Writes a Unified Log entry.
@@ -168,29 +191,7 @@ class SQLiteDatabaseOutputWriter(object):
         Args:
           log (LogEntry): log entry.
         '''
-        if self._connection:
-            time_value = UnifiedLogLib.ReadAPFSTime(log_entry.time)
-            values_tuple = (
-                log_entry.filename, log_entry.log_file_pos, log_entry.ct,
-                time_value, log_entry.thread, log_entry.log_type,
-                log_entry.act_id, log_entry.parentActivityIdentifier,
-                log_entry.pid, log_entry.euid, log_entry.ttl,
-                log_entry.p_name, log_entry.lib, log_entry.sub_sys,
-                log_entry.cat, log_entry.signpost_name,
-                log_entry.signpost_string, log_entry.imageOffset,
-                '{0!s}'.format(log_entry.imageUUID),
-                '{0!s}'.format(log_entry.processImageUUID),
-                log_entry.senderImagePath, log_entry.processImagePath,
-                log_entry.log_msg)
-
-            # TODO: cache queries to use executemany
-            try:
-                cursor = self._connection.cursor() 
-                cursor.execute(self._INSERT_LOGS_VALUES_QUERY, values_tuple)
-
-            except sqlite3.Error:
-                logger.exception('Error inserting data into database')
-            self._connection.commit()
+        self.WriteLogEntries([log_entry])
 
 class FileOutputWriter(object):
     '''Output writer that writes output to a file.'''

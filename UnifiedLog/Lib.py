@@ -58,6 +58,11 @@ def ReadAPFSTime(mac_apfs_time): # Mac APFS timestamp is nano second time epoch 
             if type(mac_apfs_time) == str:
                 mac_apfs_time = float(mac_apfs_time)
             return datetime.datetime(1970, 1, 1) + datetime.timedelta(seconds=mac_apfs_time/1000000000.)
+
+        except (ImportError, NameError, UnboundLocalError):
+            raise
+
+        # TODO: refactor wide exception.
         except Exception as ex:
             logger.error("ReadAPFSTime() Failed to convert timestamp from value " + str(mac_apfs_time) + " Error was: " + str(ex))
     return ''
@@ -171,6 +176,10 @@ class CachedFiles(object):
             #                 self.cached_uuidtext[folder_name + uuid_name] = ut
             #     else:
             #         logger.debug(folder_name + ' does not exist')
+        except (ImportError, NameError, UnboundLocalError):
+            raise
+
+        # TODO: refactor wide exception.
         except Exception:
             logger.exception('')
 
@@ -213,6 +222,11 @@ def ReadTimesyncFile(buffer, ts_list):
                 else:
                     break # break this loop, parse as header
                 pos += 32
+
+    except (ImportError, NameError, UnboundLocalError):
+        raise
+
+    # TODO: refactor wide exception.
     except Exception as ex:
         logger.exception("Exception reading TimesyncFile")
 
@@ -234,5 +248,9 @@ def ReadTimesyncFolder(path, ts_list, vfs):
                     f.close()
             else:
                 logger.error("In Timesync folder, found non-ts file {}".format(entry))
+    except (ImportError, NameError, UnboundLocalError):
+        raise
+
+    # TODO: refactor wide exception.
     except Exception:
         logger.exception('')

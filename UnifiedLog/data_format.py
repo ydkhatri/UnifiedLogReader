@@ -17,6 +17,7 @@ class BinaryDataFormat(object):
                 if type(mac_apfs_time) == str:
                     mac_apfs_time = float(mac_apfs_time)
                 return datetime.datetime(1970, 1, 1) + datetime.timedelta(seconds=mac_apfs_time/1000000000.)
+
             except (ValueError, UnicodeDecodeError, TypeError) as ex:
                 logger.error("ReadAPFSTime() Failed to convert timestamp from value " + str(mac_apfs_time) + " Error was: " + str(ex))
         return ''

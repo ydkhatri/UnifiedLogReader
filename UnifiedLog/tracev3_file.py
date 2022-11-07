@@ -20,11 +20,24 @@ from UnifiedLog import uuidtext_file
 class TraceV3(data_format.BinaryDataFormat):
     '''Tracev3 file parser.'''
 
+    _CHUNK_TAG_FIREHOSE = 0x6001
+    _CHUNK_TAG_OVERSIZE = 0x6002
+    _CHUNK_TAG_STATE = 0x6003
+
+    _TRACEPOINT_FLAG_HAS_ACTIVITY_ID = 0x0001
+    _TRACEPOINT_FLAG_HAS_UNIQUE_PID = 0x0010
+    _TRACEPOINT_FLAG_HAS_PRIVATE_STRINGS_RANGE = 0x0100
+    _TRACEPOINT_FLAG_HAS_OTHER_ACTIVITY_ID = 0x0200
+    _TRACEPOINT_FLAG_HAS_SUB_SYSTEM = 0x0200
+    _TRACEPOINT_FLAG_HAS_TTL = 0x0400
+    _TRACEPOINT_FLAG_HAS_DATA_REFERENCE = 0x0800
+    _TRACEPOINT_FLAG_HAS_SIGNPOST_NAME_REFERENCE = 0x8000
+
     def __init__(self, v_fs, v_file, ts_list, uuidtext_folder_path, large_data_cache, cached_files=None):
         '''
             Input params:
             v_fs    = VirtualFileSystem object for FS operations (listing dirs, opening files ,..)
-            v_file  = VirtualFile object for .traceV3 file
+            v_file  = VirtualFile object for .tracev3 file
             ts_list = List of TimeSync objects
             uuidtext_folder_path = Path to folder containing Uuidtext folders (and files)
             large_data_cache = Dictionary to store oversize data, 
@@ -32,9 +45,12 @@ class TraceV3(data_format.BinaryDataFormat):
             cached_files = CachedFiles object for dsc & uuidtext files (can be None)
         '''
         super(TraceV3, self).__init__()
+        self._debug_chunk_index = 0
         self._debug_log_count = 0
+        self._file = v_file
+        self._file_size = None
+
         self.vfs = v_fs
-        self.file = v_file
         # Header info
         #self.header_unknown = 0
         self.header_data_length = 0   # 0xD0 Length of remaining header
@@ -61,9 +77,8 @@ class TraceV3(data_format.BinaryDataFormat):
         self.regex = re.compile(self.regex_pattern)
         # from header items
         self.system_boot_uuid = None
-        self.large_data = {} # key = ( data_ref_id << 64 | contTime ) , value = data 
+        self.large_data = {} # key = ( data_ref_id << 64 | contTime ) , value = data
         self.boot_uuid_ts_list = None
-        self.chunk_read_count = 0
 
     def _DecompressChunkData(self, chunk_data, data_len):
         '''Decompress an individual compressed chunk (tag=0x600D)'''
@@ -143,7 +158,7 @@ class TraceV3(data_format.BinaryDataFormat):
     # https://github.com/nst/iOS-Runtime-Headers/blob/fbb634c78269b0169efdead80955ba64eaaa2f21/Frameworks/CoreLocation.framework/CLLocationManagerStateTracker.h
 
     #def _Read_CLDaemonStatusStateTrackerState(self, data):
-        ''' size=0x28 
+        ''' size=0x28
             From classdump of locationd.nsxpc from:
             https://gist.github.com/razvand/578f94748b624f4d47c1533f5a02b095
             struct Battery {
@@ -173,72 +188,561 @@ class TraceV3(data_format.BinaryDataFormat):
              "airplaneMode":false}
         '''
 
-    def ParseChunkHeader(self, buffer, debug_file_pos):
-        '''Returns tuple (tag, Subtag, DataLength)'''
-        tag, subtag, data_length = struct.unpack("<IIQ", buffer)
-        logger.debug("Chunk {} Tag=0x{:X} Subtag=0x{:X} Data_Length=0x{:X} @ 0x{:X}".format(self.chunk_read_count, tag, subtag, data_length, debug_file_pos))
-        self.chunk_read_count += 1
-        return (tag, subtag, data_length)
+    def _ParseChunkHeaderData(self, chunk_header_data, debug_file_pos):
+        '''Parses a chunk header data:
 
-    def ParseFileHeader(self, buffer, data_length):
-        self.header_data_length = data_length
-        self.header_unknown1, self.header_unknown2, self.header_continuousTime,\
-        self.header_timestamp, self.header_unknown5, self.header_unknown6, self.header_bias_in_seconds,\
-        self.header_unknown8, self.header_unknown9 = struct.unpack("<IIQiIIiII", buffer[0:40])
+        Args:
+          chunk_header_data (bytes): chunk header data.
+          debug_file_pos (int): offset of the chunk header relative to the start
+              of the file for debugging purposes.
+
+        Returns:
+          tuple[int, int, int]: chunk tag, chunk subtag and chunk data size.
+
+        Raises:
+          struct.error: if the chunk_header_data cannot be parsed.
+        '''
+        tag, subtag, chunk_data_size = struct.unpack("<IIQ", chunk_header_data)
+
+        logger.debug((
+            "Chunk {} Tag=0x{:X} Subtag=0x{:X} Data_Length=0x{:X} @ "
+            "0x{:X}").format(
+                self._debug_chunk_index, tag, subtag, chunk_data_size,
+                debug_file_pos))
+
+        self._debug_chunk_index += 1
+
+        return tag, subtag, chunk_data_size
+
+    def _ParseFileHeader(self, file_header_data):
+        '''Parses a file header.
+
+        Args:
+          file_header_data (bytes): file header data.
+
+        Raises:
+          struct.error: if the file_header_data cannot be parsed.
+        '''
+        file_header_data_size = len(file_header_data)
+
+        (self.header_unknown1, self.header_unknown2, self.header_continuousTime,
+         self.header_timestamp, self.header_unknown5, self.header_unknown6,
+         self.header_bias_in_seconds, self.header_unknown8,
+         self.header_unknown9) = struct.unpack(
+             "<IIQiIIiII", file_header_data[:40])
+
+        self.header_data_length = len(file_header_data)
+
         # Read header items (Log configuration?)
         pos = 40
-        while pos < data_length:
-            item_id, item_length = struct.unpack("<II", buffer[pos:pos+8])
+        while pos < file_header_data_size:
+            item_id, item_length = struct.unpack("<II", file_header_data[pos:pos+8])
             pos += 8
-            if item_id == 0x6100 :  # continuous time
-                self.header_item_continuousTime = struct.unpack("<Q", buffer[pos:pos+item_length])[0]
-            elif item_id == 0x6101: pass # machine hostname & model
+
+            if item_id == 0x6100:  # continuous time
+                value_data = file_header_data[pos:pos+item_length]
+                self.header_item_continuousTime = struct.unpack("<Q", value_data)[0]
+
+            elif item_id == 0x6101: # machine hostname & model
+                pass
+
             elif item_id == 0x6102: # uuid
-                self.system_boot_uuid = UUID(bytes=buffer[pos:pos+16])
-                self.boot_uuid_ts_list = self._GetBootUuidTimeSyncList(self.ts_list, self.system_boot_uuid)
-                if self.boot_uuid_ts_list is None:
-                    raise ValueError('Could not get Timesync for boot uuid! Cannot parse file..')
+                value_data = file_header_data[pos:pos+16]
+                self.system_boot_uuid = UUID(bytes=value_data)
+
             elif item_id == 0x6103: # timezone string
                 pass
+
             else:                   # not yet seen item
                 logger.info('New header item seen, item_id=0x{:X}'.format(item_id))
+
             pos += item_length
+
         self.DebugPrintTimestampFromContTime(self.header_item_continuousTime, "File Header")
 
-    def ProcessReferencedFile(self, uuid_string, catalog):
-        '''Find, open and parse a file. Add the file object to catalog.FileObjects list'''
-        # Try as dsc file, if missing, try as uuidtext, if missing, then treat as missing uuidtext
-        try:
-            if self.cached_files:
-                dsc = self.cached_files.cached_dsc.get(uuid_string, None) # try as dsc
-                if dsc:
-                    catalog.FileObjects.append(dsc)
-                    return
-                else:
-                    ut = self.cached_files.cached_uuidtext.get(uuid_string, None)
-                    if ut:
-                        catalog.FileObjects.append(ut)
-                        return
-            # Try as Dsc
-            full_path = self.vfs.path_join(self.dsc_folder_path, uuid_string)
-            if self.vfs.path_exists(full_path):
-                dsc_path = self.vfs.get_virtual_file(full_path, 'Dsc')
-                dsc = dsc_file.Dsc(dsc_path)
-                dsc.Parse()
-                catalog.FileObjects.append(dsc)
-            else:
-                # Try as uuidtext
-                is_dsc = False
-                full_path = self.vfs.path_join(self.uuidtext_folder_path, uuid_string[0:2], uuid_string[2:])
-                file_object = self.vfs.get_virtual_file(full_path, 'Uuidtext')
-                ut = uuidtext_file.Uuidtext(file_object, UUID(uuid_string))
-                ut.Parse()
-                catalog.FileObjects.append(ut)
-        except:
-            logger.exception('')
+    def _ParseFileObject(self, file_object, log_list_process_func=None):
+        '''Parses a tracev3 file-like object.
 
-    def ProcessMetaChunk(self, chunk_data):
-        '''Parses a catalog chunk data.
+        'log_list_process_func' is a function the caller provides to
+        process a list of logs. It gets called periodically as logs are extracted.
+        Its syntax is log_list_process_func(logs_list, tracev3_object)
+        Here log_list = [ log_1, log_2, .. ], where each log_x item is a tuple
+        log_x = ( log_file_pos, continuous_time, time, thread, log_type,
+                  activity_id, parent_activity_id,
+                  pid, euid, ttl, p_name, lib, sub_system, category,
+                  signpost_name, signpost_string,
+                  image_offset, image_UUID, process_image_UUID,
+                  sender_image_path, process_image_path,
+                  log_msg )
+
+        Args:
+          file_object (file): file-like object.
+          log_list_process_func (Optional[function]): callback function.
+
+        Returns:
+          bool: True if the tracev3 file-like object was successfully parsed,
+              False otherwise.
+
+        Raises:
+          IOError: if the tracev3 file cannot be parsed.
+          OSError: if the tracev3 file cannot be parsed.
+          ValueError: if the tracev3 file cannot be parsed.
+          struct.error: if the tracev3 file cannot be parsed.
+        '''
+        chunk_header_data = file_object.read(16)
+        tag, subtag, chunk_data_size = self._ParseChunkHeaderData(
+            chunk_header_data, 0)
+
+        if tag != 0x1000:
+            raise ValueError((
+                'Wrong signature in tracev3 file, got 0x{:X} instead of '
+                '0x1000').format(tag))
+
+        if subtag != 0x11:
+            raise ValueError((
+                'Cannot process this version of unified logging, '
+                'version=0x{:X}').format(subtag))
+
+        file_header_data = file_object.read(chunk_data_size)
+        self._ParseFileHeader(file_header_data)
+
+        if self.system_boot_uuid:
+            self.boot_uuid_ts_list = self._GetBootUuidTimeSyncList(
+                self.ts_list, self.system_boot_uuid)
+            if self.boot_uuid_ts_list is None:
+                raise ValueError(
+                    'Could not get Timesync for boot uuid! Cannot parse file..')
+
+        pos = 16 + chunk_data_size
+        catalog = None
+        meta_chunk_index = 0
+
+        uncompressed_file_pos = pos
+        logs = []
+
+        while pos < self._file_size:
+            file_object.seek(pos)
+            chunk_header_data = file_object.read(16)
+            tag, subtag, chunk_data_size = self._ParseChunkHeaderData(
+                chunk_header_data, uncompressed_file_pos)
+
+            chunk_data = file_object.read(chunk_data_size)
+
+            if tag == 0x600B:
+                meta_chunk_index = 0
+                catalog = self._ParseMetaChunk(chunk_data)
+                uncompressed_file_pos += 16 + chunk_data_size
+
+            elif tag == 0x600D:
+                uncompressed_chunk_data = self._DecompressChunkData(
+                    chunk_data, chunk_data_size)
+                uncompressed_chunk_data_size = len(uncompressed_chunk_data)
+
+                self.ProcessDataChunk(
+                    uncompressed_chunk_data, uncompressed_chunk_data_size,
+                    catalog, meta_chunk_index, uncompressed_file_pos + 16, logs)
+
+                meta_chunk_index += 1
+                uncompressed_file_pos += 16 + uncompressed_chunk_data_size
+
+            else:
+                logger.info("Unknown header for chunk - 0x{:X} , skipping chunk @ 0x{:X}!".format(tag, pos))
+                uncompressed_file_pos += 16 + chunk_data_size
+
+            if chunk_data_size % 8: # Go to QWORD boundary
+                chunk_data_size += 8 - (chunk_data_size % 8)
+
+            if uncompressed_file_pos % 8: # just for the uncompressed file pos
+                uncompressed_file_pos += 8 - (chunk_data_size % 8)
+
+            pos = pos + 16 + chunk_data_size
+            if log_list_process_func and (len(logs) > 100000):
+                log_list_process_func(logs, self)
+                logs = []
+
+        # outside loop, end of file reached, write remaining logs
+        if log_list_process_func and (len(logs) > 0):
+            log_list_process_func(logs, self)
+
+    def _ParseFirehoseChunkData(
+        self, chunk_data, debug_file_pos, catalog, proc_info, logs):
+        '''Parses firehose chunk data.
+
+        The firehose chunk is a chunk with tag 0x6001.
+
+        Args:
+          chunk_data (bytes): firehose chunk data.
+          debug_file_pos (int): offset of the chunk header relative to the start
+              of the file for debugging purposes.
+          logs (list[LogEntry]): log entries.
+
+        Raises:
+          struct.error: if the firehose chunk data cannot be parsed.
+        '''
+        (offset_strings, strings_v_offset, unknown4, unknown5,
+         continuousTime) = struct.unpack('<HHHHQ', chunk_data[16:32])
+
+        if strings_v_offset < 4096: #data_size - offset_strings > 0x10: # Has strings
+            size_priv_data = 4096 - strings_v_offset
+            private_strings = chunk_data[- size_priv_data:]
+        else:
+            private_strings = ''
+
+        num_logs_debug = 0
+
+        ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, continuousTime)
+        self.DebugPrintTimestampFromContTime(continuousTime, "Type 6001")
+
+        logs_end_offset = offset_strings + 16
+
+        pos2 = 32
+        while pos2 < logs_end_offset:
+            # Log item
+            start_skew = pos2 % 8
+
+            log_file_pos = debug_file_pos + pos2
+            tracepoint_data_size, log_entry = self._ParseFirehoseTracepointData(
+                chunk_data[pos2:], log_file_pos, continuousTime, catalog, proc_info,
+                private_strings, strings_v_offset)
+
+            pos2 += tracepoint_data_size
+
+            if log_entry:
+              logs.append(log_entry)
+
+            self._debug_log_count += 1
+
+            #padding
+            if ((pos2 - start_skew) % 8) != 0:
+                pos2 += 8 - ((pos2 - start_skew) % 8)
+
+            num_logs_debug += 1
+
+        logger.debug("Parsed {} type 6001 logs".format(num_logs_debug))
+
+    def _ParseFirehoseTracepointData(
+        self, tracepoint_data, log_file_pos, continuousTime, catalog, proc_info,
+        private_strings, strings_v_offset):
+        '''Parses firehose tracepoint data.
+
+        Args:
+          tracepoint_data (bytes): firehose tracepoint data.
+          log_file_pos (int): offset of the firehose tracepoint data.
+          continuousTime (int): continuos timestamp.
+          catalog (Catalog): catalog.
+          proc_info (ProcInfo): process information.
+          private_strings (str): private strings.
+
+        Returns:
+          tuple[int, LogEntry]: tracepoint data size and log entry or None if
+              the log entry could not be parsed.
+
+        Raises:
+          struct.error: if the firehose tracepoint data cannot be parsed.
+        '''
+        log_entry = None
+
+        (u1, u2, fmt_str_v_offset, thread, ct_rel, ct_rel_upper,
+         log_data_len) = struct.unpack('<HHIQIHH', tracepoint_data[:24])
+
+        ct = continuousTime + (ct_rel | (ct_rel_upper << 32))
+        # processing
+        #logger.debug('log_file_pos=0x{:X}'.format(log_file_pos))
+
+        ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
+        time = ts.time_stamp + (ct - ts.continuousTime) * (1.0*ts.ts_numerator)/ts.ts_denominator
+        #logger.debug("Type 6001 LOG timestamp={}".format(self._ReadAPFSTime(time)))
+
+        try: # Big Exception block for any log uncaught exception
+            dsc_cache = catalog.FileObjects[proc_info.dsc_file_index] if (proc_info.dsc_file_index != -1) else None
+            ut_cache = catalog.FileObjects[proc_info.uuid_file_index]
+            p_name = ut_cache.library_name
+
+            senderImagePath = '' # Can be same as processImagePath
+            processImagePath = ut_cache.library_path
+            imageOffset = 0  # Same as senderProgramCounter
+            imageUUID = ''   # Same as senderImageUUID
+            processImageUUID = ut_cache.Uuid # Can be same as imageUUID
+            parentActivityIdentifier = 0
+
+            ut = None
+            format_str = ''
+            lib = '' # same as senderImage?
+            priv_str_len = 0      # when has_private_data
+            priv_str_v_offset = 0 # when has_private_data
+            sub_sys = ''
+            cat = ''
+            ttl = 0
+            act_id = [0]
+            has_activity_unk = False # unknown flag
+            is_activity = False
+            log_type = 'Default'
+            u1_upper_byte = (u1 >> 8)
+            is_signpost = False
+            signpost_string = 'spid 0x%x,'
+            signpost_name =''
+            if u1_upper_byte & 0x80: # signpost (Default)
+                is_signpost = True
+                if u1_upper_byte & 0xC0 == 0xC0: signpost_string += ' system,'  # signpostScope
+                else:                            signpost_string += ' process,' # signpostScope
+                if u1_upper_byte & 0x82 == 0x82: signpost_string += ' end'      # signpostType
+                elif u1_upper_byte & 0x81 == 0x81: signpost_string += ' begin'
+                else:                            signpost_string += ' event'
+            elif u1_upper_byte == 0x01:
+                log_type = 'Info'
+                if (u1 & 0x0F) == 0x02:
+                    log_type ='Activity'
+                    is_activity = True
+            elif u1_upper_byte == 0x02: log_type = 'Debug'
+            elif u1_upper_byte == 0x10: log_type = 'Error'
+            elif u1_upper_byte == 0x11: log_type = 'Fault'
+
+            if u2 & 0x7000 or u2 & 0x00E0:  # E=1110
+                logger.info('Unknown flag for u2 encountered u2=0x{:4X} @ 0x{:X} ct={}'.format(u2, log_file_pos, ct))
+                #raise ValueError('Unk u2 flag')
+
+            if u2 & 0x0100: has_activity_unk = True if is_activity else False
+            has_context_data = False
+            if u2 & 0x1000: has_context_data = True
+
+            has_alternate_uuid = bool(u2 & 0x0008)
+            has_msg_in_dsc = bool(u2 & 0x0004)
+            has_msg_in_uuidtext = bool(u2 & 0x0002)
+
+            log_data_len2 = log_data_len
+            pos3 = 24
+            if is_activity:  # cur_aid [apple]
+                u5, u6 = struct.unpack('<II', tracepoint_data[pos3:pos3 + 8])  # check for activity
+                if u6 == 0x80000000:
+                    act_id.append(u5)
+                    pos3 += 8
+                    log_data_len2 -= 8
+                else:
+                    logger.error('Expected activityID, got something else!')
+
+                if u2 & self._TRACEPOINT_FLAG_HAS_UNIQUE_PID:
+                    proc_id = struct.unpack('<Q', tracepoint_data[pos3:pos3 + 8])[0]
+                    pos3 += 8
+                    log_data_len2 -= 8
+
+                if u2 & self._TRACEPOINT_FLAG_HAS_ACTIVITY_ID:  # another act_id # new_aid [apple]
+                    u5, u6 = struct.unpack('<II', tracepoint_data[pos3:pos3 + 8])
+                    if u6 == 0x80000000:
+                        act_id.append(u5)
+                        pos3 += 8
+                        log_data_len2 -= 8
+                    else:
+                        logger.error('Expected activityID, got something else!')
+
+                if u2 & self._TRACEPOINT_FLAG_HAS_OTHER_ACTIVITY_ID:  # yet another act_id # other_aid [apple]
+                    u5, u6 = struct.unpack('<II', tracepoint_data[pos3:pos3 + 8])
+                    if u6 == 0x80000000:
+                        act_id.append(u5)
+                        pos3 += 8
+                        log_data_len2 -= 8
+                    else:
+                        logger.error('Expected activityID, got something else!')
+
+            else:
+                if u2 & self._TRACEPOINT_FLAG_HAS_ACTIVITY_ID:
+                    u5, u6 = struct.unpack('<II', tracepoint_data[pos3:pos3 + 8])
+                    if u6 == 0x80000000:
+                        act_id.append(u5)
+                        pos3 += 8
+                        log_data_len2 -= 8
+                    else:
+                        logger.error('Expected activityID, got something else!')
+
+                if u2 & self._TRACEPOINT_FLAG_HAS_PRIVATE_STRINGS_RANGE:
+                    if private_strings:
+                        priv_str_v_offset, priv_str_len = struct.unpack('<HH', tracepoint_data[pos3:pos3 + 4])
+                        pos3 += 4
+                        log_data_len2 -= 4
+                    else:
+                        logger.error('Did not read priv_str_v_offset as no private_strings are present @ log 0x{:X}! is_activity={}'.format(log_file_pos, bool(is_activity)))
+
+            u5 = struct.unpack('<I', tracepoint_data[pos3:pos3 + 4])[0]
+            pos3 += 4
+            log_data_len2 -= 4
+
+            if has_alternate_uuid:
+                if not has_msg_in_uuidtext: # Then 2 bytes (uuid_file_index) instead of UUID
+                    uuid_file_id = struct.unpack('<h', tracepoint_data[pos3:pos3 + 2])[0]
+                    pos3 += 2
+                    log_data_len2 -= 2
+                    uuid_found = False
+                    for extra_ref in proc_info.extra_file_refs:
+                        if (extra_ref.id == uuid_file_id) and \
+                        ( (u5 >= extra_ref.v_offset) and ( (u5-extra_ref.v_offset) < extra_ref.data_size) ):  # found it
+                            ut = catalog.FileObjects[extra_ref.uuid_file_index]
+                            format_str = ut.ReadFmtStringFromVirtualOffset(fmt_str_v_offset)
+                            imageUUID = ut.Uuid
+                            senderImagePath = ut.library_path
+                            imageOffset = u5 - extra_ref.v_offset
+                            uuid_found = True
+                            break
+                    if not uuid_found:
+                        logger.error('no uuid found for absolute pc - uuid_file_id was {} u5=0x{:X} fmt_str_v_offset=0x{:X} @ 0x{:X} ct={}'.format(uuid_file_id, u5, fmt_str_v_offset, log_file_pos, ct))
+                        format_str = '<compose failure [missing precomposed log]>' # error message from log utility
+
+                else:             # UUID
+                    file_path = binascii.hexlify(tracepoint_data[pos3:pos3 + 16]).decode('utf8').upper()
+                    pos3 += 16
+                    log_data_len2 -= 16
+                    ## try to get format_str and lib from uuidtext file
+                    ut = None
+                    # search in existing files, likely will not find it here!
+                    for obj in catalog.FileObjects:
+                        if obj._file.filename == file_path:
+                            ut = obj
+                            break
+                    if not ut: # search in other_uuidtext, as we may have seen this earlier
+                        ut = self.other_uuidtext.get(file_path, None)
+                    if not ut: # Not found, so open and parse new file
+                        uuidtext_full_path = self.vfs.path_join(self.uuidtext_folder_path, file_path[0:2], file_path[2:])
+                        file_object = self.vfs.get_virtual_file(uuidtext_full_path, 'Uuidtext')
+                        ut = uuidtext_file.Uuidtext(file_object, UUID(file_path))
+                        self.other_uuidtext[file_path] = ut # Add to other_uuidtext, so we don't have to parse it again
+                        if not ut.Parse():
+                            ut = None
+                            logger.error('Error parsing uuidtext file {} @ 0x{:X} ct={}'.format(uuidtext_full_path, log_file_pos, ct))
+                    if ut:
+                        format_str = ut.ReadFmtStringFromVirtualOffset(fmt_str_v_offset)
+                        p_name = ut_cache.library_name
+                        lib = ut.library_name
+                        imageUUID = ut.Uuid
+                        senderImagePath = ut.library_path
+                    else:
+                        logger.debug("Could not read from uuidtext {} @ 0x{:X} ct={}".format(file_path, log_file_pos, ct))
+
+            data_ref_id = None
+            sp_name_ref = None
+
+            if not is_activity:
+                if u2 & self._TRACEPOINT_FLAG_HAS_SUB_SYSTEM:
+                    item_id = struct.unpack('<H', tracepoint_data[pos3:pos3 + 2])[0]
+                    pos3 += 2
+                    log_data_len2 -= 2
+                    sub_sys, cat = proc_info.GetSubSystemAndCategory(item_id)
+
+                if u2 & self._TRACEPOINT_FLAG_HAS_TTL:
+                    ttl = struct.unpack('<B', tracepoint_data[pos3:pos3 + 1])[0]
+                    pos3 += 1
+                    log_data_len2 -= 1
+
+                if u2 & self._TRACEPOINT_FLAG_HAS_DATA_REFERENCE:
+                    # This is a ref to an object stored as type 0x0602 blob
+                    data_ref_id = struct.unpack('<H', tracepoint_data[pos3:pos3 + 2])[0]
+                    pos3 += 2
+                    log_data_len2 -= 2
+                    logger.debug('Data reference ID = {:4X}'.format(data_ref_id))
+
+                if is_signpost:
+                    spid_val = struct.unpack('<Q', tracepoint_data[pos3:pos3 + 8])[0]
+                    pos3 += 8
+                    log_data_len2 -= 8
+                    signpost_string = signpost_string % (spid_val)
+
+                if u2 & self._TRACEPOINT_FLAG_HAS_SIGNPOST_NAME_REFERENCE:
+                    sp_name_ref = struct.unpack('<I', tracepoint_data[pos3:pos3 + 4])[0]
+                    pos3 += 4
+                    log_data_len2 -= 4
+
+            # Get format_str and lib now
+            if has_msg_in_uuidtext: # u2 & 0x0002: # msg string in uuidtext file
+                imageOffset = u5
+                if has_alternate_uuid: # another uuidtext file was specified, already read that above
+                    if sp_name_ref is not None:
+                        signpost_name = ut.ReadFmtStringFromVirtualOffset(sp_name_ref)
+                else:
+                    imageUUID = ut_cache.Uuid
+                    senderImagePath = ut_cache.library_path
+                    format_str = ut_cache.ReadFmtStringFromVirtualOffset(fmt_str_v_offset)
+                    if sp_name_ref is not None:
+                        signpost_name = ut_cache.ReadFmtStringFromVirtualOffset(sp_name_ref)
+
+            elif has_msg_in_dsc: # u2 & 0x0004: # msg string in dsc file
+                if sp_name_ref is not None:
+                    try:
+                        signpost_name, c_a, c_b = dsc_cache.ReadFmtStringAndEntriesFromVirtualOffset(sp_name_ref)
+                    except (KeyError, IOError):
+                        logger.error("Could not get signpost name! @ 0x{:X} ct={}".format(log_file_pos, ct))
+
+                cache_b1 = dsc_cache.GetUuidEntryFromVirtualOffset(u5)
+                if cache_b1:
+                    lib = cache_b1[4] # senderimage_name
+                    imageUUID = cache_b1[2]
+                    senderImagePath = cache_b1[3]
+                    imageOffset = u5 - cache_b1[0]
+
+                try:
+                    if fmt_str_v_offset & 0x80000000: # check for highest bit
+                        format_str = "%s"
+                        logger.debug("fmt_str_v_offset highest bit set @ 0x{:X} ct={}".format(log_file_pos, ct))
+                    else:
+                        format_str, cache_a, cache_b = dsc_cache.ReadFmtStringAndEntriesFromVirtualOffset(fmt_str_v_offset)
+                except (KeyError, IOError):
+                    logger.error('Failed to get DSC msg string @ 0x{:X} ct={}'.format(log_file_pos, ct))
+
+            elif has_alternate_uuid: #u2 & 0x0008: # Parsed above
+                pass
+
+            else:
+                logger.warning("No message string flags! @ 0x{:X} ct={}".format(log_file_pos, ct))
+
+            log_data = None
+            if log_data_len2:
+                strings_slice = ''
+                if priv_str_len:
+                    if private_strings:
+                        strings_start_offset = 0
+                        strings_len = len(private_strings)
+                        strings_start_offset = priv_str_v_offset - strings_v_offset
+                        if (strings_start_offset > len(private_strings)) or (strings_start_offset < 0):
+                            logger.error('Error calculating strings virtual offset @ 0x{:X} ct={}'.format(log_file_pos, ct))
+                        strings_slice = private_strings[strings_start_offset : strings_start_offset + priv_str_len]
+                    else:
+                        logger.error('Flag has_private_data but no strings present! @ 0x{:X} ct={}'.format(log_file_pos, ct))
+
+                if u1 & 0x3 == 0x3: # data_descriptor_at_buffer_end
+                    log_data = self.ReadLogDataBuffer2(tracepoint_data[pos3:pos3 + log_data_len2], log_data_len2, strings_slice)
+                else:
+                    log_data = self.ReadLogDataBuffer(tracepoint_data[pos3:pos3 + log_data_len2], log_data_len2, strings_slice, has_context_data)
+
+            if data_ref_id is not None:
+                unique_ref = data_ref_id << 64 | ct
+                log_data = self.large_data.get(unique_ref, None)
+                if log_data:
+                    log_data = log_data = self.ReadLogDataBuffer(log_data, len(log_data), '', has_context_data)
+                else:
+                    logger.error('Data Reference not found for unique_ref=0x{:X} ct={}!'.format(unique_ref, ct))
+                    format_str = "<decode: missing data>"
+                    # TODO - Sometimes this data is in another file, create a mechanism to deal with that
+                    # Eg: Logdata.Livedata.tracev3 will reference entries from Persist\*.tracev3
+                    #  There are very few of these in practice.
+
+            log_msg = self.RecreateMsgFromFmtStringAndData(format_str, log_data, log_file_pos) if log_data else format_str
+            if len(act_id) > 2: parentActivityIdentifier = act_id[-2]
+
+            log_entry = resources.LogEntry(
+                self._file.filename, log_file_pos, ct, time, thread,
+                log_type, act_id[-1], parentActivityIdentifier,
+                proc_info.pid, proc_info.euid, ttl, p_name, lib, sub_sys,
+                cat, signpost_name, signpost_string if is_signpost else '',
+                imageOffset, imageUUID, processImageUUID, senderImagePath,
+                processImagePath, log_msg)
+
+        except (ImportError, NameError, UnboundLocalError):
+            raise
+
+        # TODO: refactor wide exception.
+        except Exception as ex:
+            logger.exception("Exception while processing log @ 0x{:X} ct={}, skipping that log entry!".format(log_file_pos, ct))
+
+        return 24 + log_data_len, log_entry
+
+    def _ParseMetaChunk(self, chunk_data):
+        '''Parses catalog chunk data.
 
         The catalog chunk is a chunk with tag 0x600b.
 
@@ -362,9 +866,9 @@ class TraceV3(data_format.BinaryDataFormat):
 
             for proc_info_id in chunk_meta.ProcInfo_Ids:
                 # Find it in catalog.ProcInfos and insert ref in chunk_meta.ProcInfos
-                #  ref is unique by using both proc_id1 and proc_id2 
+                #  ref is unique by using both proc_id1 and proc_id2
                 proc_info = catalog.GetProcInfoById(proc_info_id)
-                if proc_info:    
+                if proc_info:
                     chunk_meta.ProcInfos[ proc_info.proc_id2 | (proc_info.proc_id1 << 32) ] = proc_info
 
             end_data_offset = data_offset + 4
@@ -411,6 +915,148 @@ class TraceV3(data_format.BinaryDataFormat):
                 logger.exception('')
         return msg
 
+    def _ParseOversizeChunkData(self, chunk_data, log_file_pos):
+        '''Parses oversize chunk data.
+
+        The oversize chunk is a chunk with tag 0x6001.
+
+        Args:
+          chunk_data (bytes): oversize chunk data.
+
+        Raises:
+          struct.error: if the oversize chunk data cannot be parsed.
+        '''
+        ct, data_ref_id, data_len = struct.unpack('<QII', chunk_data[16:32])
+
+        data_end_offset = 32 + data_len
+        large_data_key = data_ref_id << 64 | ct
+        self.large_data[large_data_key] = chunk_data[32:data_end_offset]
+
+        ## Debug print
+        ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
+        time = ts.time_stamp + (ct - ts.continuousTime)*(1.0*ts.ts_numerator)/ts.ts_denominator
+        logger.debug("Type 6002 timestamp={} ({}), data_ref_id=0x{:X} @ 0x{:X}".format(self._ReadAPFSTime(time), ct, data_ref_id, log_file_pos))
+
+    def _ParseStateChunkData(self, chunk_data, catalog, proc_info, logs):
+        '''Parses state chunk data.
+
+        The state chunk is a chunk with tag 0x6001.
+
+        Args:
+          chunk_data (bytes): state chunk data.
+          catalog (Catalog): catalog.
+          proc_info (ProcInfo): process information.
+          logs (list[LogEntry]): log entries.
+
+        Raises:
+          struct.error: if the state chunk data cannot be parsed.
+        '''
+        log_type = 'State'
+        ct, activity_id, un7 = struct.unpack("<QII", chunk_data[16:32])
+        uuid = UUID(bytes=chunk_data[32:48])
+        data_type, data_len = struct.unpack('<II', chunk_data[48:56])
+
+        # type 1 does not have any strings, it is blank or random bytes
+        if data_type != 1:
+            obj_type_str_1 = self._ReadCString(chunk_data[56:120])
+            obj_type_str_2 = self._ReadCString(chunk_data[120:184])
+
+        name = self._ReadCString(chunk_data[184:248], 64)
+
+        # datatype  1=plist, 2=custom object, 3=unknown data object
+        log_msg = ''
+        if data_len:
+            data = chunk_data[248:248 + data_len]
+            if data_type == 1: # plist  # serialized NS/CF object [Apple]
+                try:
+                    plist = biplist.readPlistFromString(data)
+                    log_msg = unicode(plist)
+                except (ImportError, NameError, UnboundLocalError):
+                    raise
+
+                # TODO: refactor wide exception.
+                except Exception as ex:
+                    logger.exception('Problem reading plist from log @ 0x{:X} ct={}'.format(log_file_pos, ct))
+
+            elif data_type == 2:  #custom object, not being read by log utility in many cases!
+                logger.error('Did not read data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
+
+            elif data_type == 3:  # custom [Apple] #TODO - read non-plist data
+                if obj_type_str_1 == 'location' and obj_type_str_2 == '_CLClientManagerStateTrackerState':
+                    log_msg = self._Read_CLClientManagerStateTrackerState(data)
+                else:
+                    logger.error('Did not read data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
+
+            else:
+                logger.error('Unknown data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
+
+        try: # for any uncaught exception
+            ut_cache = catalog.FileObjects[proc_info.uuid_file_index]
+            p_name = ut_cache.library_name
+
+            senderImagePath = '' # Can be same as processImagePath
+            processImagePath = ut_cache.library_path
+            imageOffset = 0  # Same as senderProgramCounter
+            imageUUID = uuid
+            processImageUUID = ut_cache.Uuid
+
+            ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
+            time = ts.time_stamp + (ct - ts.continuousTime) *(1.0*ts.ts_numerator)/ts.ts_denominator
+            #logger.debug("Type 6003 timestamp={}".format(self._ReadAPFSTime(time)))
+
+            log_entry = resources.LogEntry(
+                self._file.filename, log_file_pos, ct, time, 0, log_type, 0, 0,
+                pid, euid, ttl, p_name, str(uuid).upper(), '', '', '', '',
+                imageOffset, imageUUID, processImageUUID, senderImagePath,
+                processImagePath, name + "\n" + log_msg)
+
+            logs.append(log_entry)
+
+        except (ImportError, NameError, UnboundLocalError):
+            raise
+
+        # TODO: refactor wide exception.
+        except Exception as ex:
+            logger.exception("Exception while processing logtype 'State' @ 0x{:X} ct={}, skipping that log entry!".format(log_file_pos, ct))
+
+        self._debug_log_count += 1
+
+    def ProcessReferencedFile(self, uuid_string, catalog):
+        '''Find, open and parse a file. Add the file object to catalog.FileObjects list'''
+        # Try as dsc file, if missing, try as uuidtext, if missing, then treat as missing uuidtext
+        try:
+            if self.cached_files:
+                dsc = self.cached_files.cached_dsc.get(uuid_string, None) # try as dsc
+                if dsc:
+                    catalog.FileObjects.append(dsc)
+                    return
+                else:
+                    ut = self.cached_files.cached_uuidtext.get(uuid_string, None)
+                    if ut:
+                        catalog.FileObjects.append(ut)
+                        return
+            # Try as Dsc
+            full_path = self.vfs.path_join(self.dsc_folder_path, uuid_string)
+            if self.vfs.path_exists(full_path):
+                dsc_path = self.vfs.get_virtual_file(full_path, 'Dsc')
+                dsc = dsc_file.Dsc(dsc_path)
+                dsc.Parse()
+                catalog.FileObjects.append(dsc)
+            else:
+                # Try as uuidtext
+                is_dsc = False
+                full_path = self.vfs.path_join(self.uuidtext_folder_path, uuid_string[0:2], uuid_string[2:])
+                file_object = self.vfs.get_virtual_file(full_path, 'Uuidtext')
+                ut = uuidtext_file.Uuidtext(file_object, UUID(uuid_string))
+                ut.Parse()
+                catalog.FileObjects.append(ut)
+        except (ImportError, NameError, UnboundLocalError):
+            raise
+
+        # TODO: refactor wide exception.
+        except Exception as ex:
+            logger.exception('')
+
     def ReadLogDataBuffer2(self, buffer, buf_size, strings_buffer):
         '''
             Reads log data when data descriptors are at end of buffer
@@ -427,7 +1073,7 @@ class TraceV3(data_format.BinaryDataFormat):
             if total_items != 0:
                 logger.error('Unknown data found in log data buffer')
             return data
-        
+
         items_read = 0
         pos -= total_items
         while items_read < total_items:
@@ -446,14 +1092,14 @@ class TraceV3(data_format.BinaryDataFormat):
             data.append( [0, size, item_data] )
             pos += size
             items_read += 1
-        
+
         return data
 
     def ReadLogDataBuffer(self, buffer, buf_size, strings_buffer, has_context_data):
         '''Returns a list of items read as [ type, size, raw_value_binary_string ]'''
         data = []
         data_descriptors=[] # [ (data_index, offset, size, data_type), .. ]
-        
+
         unknown, total_items = struct.unpack('<BB', buffer[0:2])
         pos = 2
         pos_debug = 0
@@ -470,7 +1116,7 @@ class TraceV3(data_format.BinaryDataFormat):
                 data.append([item_type, item_size, buffer[pos:pos+item_size]])
             elif item_type == 2: # %p (printed as hex with 0x prefix)
                 data.append([item_type, item_size, buffer[pos:pos+item_size]])
-            elif item_type in (0x20, 0x21, 0x22, 0x40, 0x41, 0x42, 0x31, 0x32): # string descriptor 0x22={public}%s 0x4x shows as %@ (if size=0, then '(null)') 
+            elif item_type in (0x20, 0x21, 0x22, 0x40, 0x41, 0x42, 0x31, 0x32): # string descriptor 0x22={public}%s 0x4x shows as %@ (if size=0, then '(null)')
                 # byte 0xAB A=type(0=num,1=len??,2=string in stringsbuf,4=object)  B=style (0=normal,1=private,2={public})
                 # 0x3- is for %.*P object types
                 offset, size = struct.unpack('<HH', buffer[pos:pos+4])
@@ -721,7 +1367,11 @@ class TraceV3(data_format.BinaryDataFormat):
                         elif data_size == 4: number = struct.unpack("<I", raw_data)[0]
                         else: logger.error('Unknown length ({}) for number in log @ 0x{:X}'.format(data_size, log_file_pos))
                         msg += '0x' + ('%' + flags_width_precision + 'x') % number
-            except:
+            except (ImportError, NameError, UnboundLocalError):
+                raise
+
+            # TODO: refactor wide exception.
+            except Exception as ex:
                 logger.exception('exception for log @ 0x{:X}'.format(log_file_pos))
                 msg += "E-R-R-O-R"
             index += 1
@@ -761,473 +1411,62 @@ class TraceV3(data_format.BinaryDataFormat):
             logger.error('Log data length (0x{:X}) < {} for log @ 0x{:X}!'.format(log_length, bytes_needed, log_abs_offset))
             raise ValueError('Not enough data in log data buffer!')
 
-    def ProcessDataChunk(self, buffer, catalog, meta_chunk_index, debug_file_pos, logs):
+    def ProcessDataChunk(self, chunk_data, chunk_data_size, catalog, meta_chunk_index, debug_file_pos, logs):
         '''Read chunks with flag 0x600D'''
-        global debug_log_count
-        len_buffer = len(buffer)
         pos = 0
         chunk_meta = catalog.ChunkMetaInfo[meta_chunk_index]
-        while (pos + 16) < len_buffer:
-            tag, subtag, data_size = self.ParseChunkHeader(buffer[pos:pos+16], debug_file_pos + pos)
+        while (pos + 16) < chunk_data_size:
+            tag, subtag, data_size = self._ParseChunkHeaderData(chunk_data[pos:pos+16], debug_file_pos + pos)
             pos += 16
             start_skew = pos % 8 # calculate deviation from 8-byte boundary for padding later
-            proc_id1, proc_id2, ttl = struct.unpack('QII', buffer[pos:pos+16]) # ttl is not for type 6001, it means something else there!
-            pos2 = 16
+            proc_id1, proc_id2, ttl = struct.unpack('QII', chunk_data[pos:pos+16]) # ttl is not for type 6001, it means something else there!
+
             proc_info = self.GetProcInfo(proc_id1, proc_id2, chunk_meta)
-            log_file_pos = debug_file_pos + pos + pos2 - 32
+            log_file_pos = debug_file_pos + pos + 16 - 32
             if not proc_info: # Error checking and skipping that chunk entry, so we can parse the rest
                 logger.error('Could not get proc_info, skipping log @ 0x{:X}'.format(log_file_pos))
                 pos += data_size
                 if ((pos - start_skew) % 8):
                     # sometimes no padding after privatedata. Try to detect null byte, if so pad it.
-                    if (pos+1 < len_buffer) and (buffer[pos:pos+1] == b'\x00'): 
+                    if (pos+1 < chunk_data_size) and (chunk_data[pos:pos+1] == b'\x00'):
                         pad_len = 8 - ((pos - start_skew) % 8)
                         pos += pad_len
                     else:
                         logger.warning('Avoided padding for log ending @ 0x{:X}'.format(debug_file_pos + pos))
             pid = proc_info.pid
             euid = proc_info.euid
-            if tag == 0x6001: #Firehose
-                offset_strings, strings_v_offset, unknown4, unknown5, continuousTime \
-                  = struct.unpack('<HHHHQ', buffer[pos + pos2 : pos + pos2 + 16])
-                pos2 = 32
-                if strings_v_offset < 4096: #data_size - offset_strings > 0x10: # Has strings
-                    size_priv_data = 4096 - strings_v_offset
-                    private_strings = buffer[pos + data_size - size_priv_data : pos + data_size]
-                else:
-                    private_strings = ''
 
-                num_logs_debug = 0
+            end_pos = pos + data_size
 
-                ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, continuousTime)
-                self.DebugPrintTimestampFromContTime(continuousTime, "Type 6001")
-                
-                logs_end_offset = offset_strings + 16
-                while pos2 < logs_end_offset:
-                    # Log item 
-                    log_start_pos = pos + pos2
-                    start_skew = pos2 % 8
-                    u1, u2, fmt_str_v_offset, thread, ct_rel, ct_rel_upper, log_data_len = struct.unpack('<HHIQIHH', buffer[pos + pos2 : pos + pos2 + 24])
-                    pos2 += 24
-                    
-                    ct = continuousTime + (ct_rel | (ct_rel_upper << 32))
-                    # processing
-                    log_file_pos = debug_file_pos + pos + pos2 - 24
-                    #logger.debug('log_file_pos=0x{:X}'.format(log_file_pos))
+            if tag == self._CHUNK_TAG_FIREHOSE:
+                self._ParseFirehoseChunkData(
+                    chunk_data[pos:end_pos], debug_file_pos, catalog, proc_info, logs)
 
-                    ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
-                    time = ts.time_stamp + (ct - ts.continuousTime)*(1.0*ts.ts_numerator)/ts.ts_denominator
-                    #logger.debug("Type 6001 LOG timestamp={}".format(self._ReadAPFSTime(time)))
-                    try: # Big Exception block for any log uncaught exception
-                        dsc_cache = catalog.FileObjects[proc_info.dsc_file_index] if (proc_info.dsc_file_index != -1) else None
-                        ut_cache = catalog.FileObjects[proc_info.uuid_file_index]
-                        p_name = ut_cache.library_name
+            elif tag == self._CHUNK_TAG_OVERSIZE:
+                self._ParseOversizeChunkData(chunk_data[pos:end_pos], debug_file_pos)
 
-                        senderImagePath = '' # Can be same as processImagePath
-                        processImagePath = ut_cache.library_path
-                        imageOffset = 0  # Same as senderProgramCounter
-                        imageUUID = ''   # Same as senderImageUUID
-                        processImageUUID = ut_cache.Uuid # Can be same as imageUUID
-                        parentActivityIdentifier = 0
+            elif tag == self._CHUNK_TAG_STATE:
+                self._ParseStateChunkData(chunk_data[pos:end_pos], catalog, proc_info, logs)
 
-                        ut = None
-                        format_str = ''
-                        lib = '' # same as senderImage?
-                        priv_str_len = 0      # when has_private_data
-                        priv_str_v_offset = 0 # when has_private_data
-                        sub_sys = ''
-                        cat = ''
-                        ttl = 0
-                        act_id = [0]
-                        has_msg_in_uuidtext = False # main_exe     [apple]
-                        has_ttl = False             # has_rules    [apple]
-                        has_act_id = False          # has_current_aid [apple]
-                        has_subsys = False
-                        has_alternate_uuid = False  # absolute     [apple]
-                        has_msg_in_dsc = False      # shared_cache [apple]
-                        has_other_act_id = False
-                        has_unique_pid = False
-                        has_private_data = False
-                        has_sp_name = False
-                        has_data_ref = False
-                        has_context_data = False    # for backtrace context
-                        has_activity_unk = False # unknown flag
-                        is_activity = False
-                        log_type = 'Default'
-                        u1_upper_byte = (u1 >> 8)
-                        is_signpost = False
-                        signpost_string = 'spid 0x%x,'
-                        signpost_name =''
-                        if u1_upper_byte & 0x80: # signpost (Default)
-                            is_signpost = True
-                            if u1_upper_byte & 0xC0 == 0xC0: signpost_string += ' system,'  # signpostScope
-                            else:                            signpost_string += ' process,' # signpostScope
-                            if u1_upper_byte & 0x82 == 0x82: signpost_string += ' end'      # signpostType
-                            elif u1_upper_byte & 0x81 == 0x81: signpost_string += ' begin'
-                            else:                            signpost_string += ' event'
-                        elif u1_upper_byte == 0x01: 
-                            log_type = 'Info'
-                            if (u1 & 0x0F) == 0x02:
-                                log_type ='Activity'
-                                is_activity = True
-                        elif u1_upper_byte == 0x02: log_type = 'Debug'
-                        elif u1_upper_byte == 0x10: log_type = 'Error'
-                        elif u1_upper_byte == 0x11: log_type = 'Fault'
-                        elif u1 == 7: log_type = 'Loss' # New
+            else:
+                logger.info("Unexpected tag value 0x{:X} @ 0x{:X} (Expected 0x6001, 0x6002 or 0x6003)".format(tag, log_file_pos))
 
-                        if u2 & 0x7000:
-                            logger.info('Unknown flag for u2 encountered u2=0x{:4X} @ 0x{:X} ct={}'.format(u2, log_file_pos, ct))
-                            #raise ValueError('Unk u2 flag')
-                        if u2 & 0x8000: has_sp_name = True
-                        if u2 & 0x1000: has_context_data = True
-
-                        if u2 & 0x0800: has_data_ref = True
-                        if u2 & 0x0400: has_ttl = True
-                        if u2 & 0x0200: has_subsys = True if (not is_activity) else False 
-                        if u2 & 0x0200: has_other_act_id = True if is_activity else False
-                        if u2 & 0x0100: has_private_data = True if (not is_activity) else False
-                        if u2 & 0x0100: has_activity_unk = True if is_activity else False
-
-                        if u2 & 0x00E0: # E=1110
-                            logger.info('Unknown flag for u2 encountered u2=0x{:4X} @ 0x{:X} ct={}'.format(u2, log_file_pos, ct))
-                            #raise ValueError('Unk u2 flag')
-                        if u2 & 0x0010: has_unique_pid = True
-
-                        if u2 & 0x0008: has_alternate_uuid = True
-                        if u2 & 0x0004: has_msg_in_dsc = True
-                        if u2 & 0x0002: has_msg_in_uuidtext = True
-                        if u2 & 0x0001: has_act_id = True
-
-                        log_data_len2 = log_data_len
-                        pos3 = pos2
-                        if is_activity: # cur_aid [apple]
-                            u5, u6 = struct.unpack('<II', buffer[pos + pos3 : pos + pos3 + 8]) # check for activity
-                            if u6 == 0x80000000:
-                                act_id.append(u5)
-                                pos3 += 8
-                                log_data_len2 -= 8
-                            else:
-                                logger.error('Expected activityID, got something else!')
-                            if has_unique_pid:
-                                proc_id = struct.unpack('<Q', buffer[pos + pos3 : pos + pos3 + 8])[0]
-                                pos3 += 8
-                                log_data_len2 -= 8
-                            if has_act_id: # another act_id # new_aid [apple]
-                                u5, u6 = struct.unpack('<II', buffer[pos + pos3 : pos + pos3 + 8])
-                                if u6 == 0x80000000:
-                                    act_id.append(u5)
-                                    pos3 += 8
-                                    log_data_len2 -= 8
-                                else:
-                                    logger.error('Expected activityID, got something else!')
-                            if has_other_act_id: # yet another act_id # other_aid [apple]
-                                u5, u6 = struct.unpack('<II', buffer[pos + pos3 : pos + pos3 + 8])
-                                if u6 == 0x80000000:
-                                    act_id.append(u5)
-                                    pos3 += 8
-                                    log_data_len2 -= 8
-                                else:
-                                    logger.error('Expected activityID, got something else!')
-                        else:
-                            if has_act_id:
-                                u5, u6 = struct.unpack('<II', buffer[pos + pos3 : pos + pos3 + 8])
-                                if u6 == 0x80000000:
-                                    act_id.append(u5)
-                                    pos3 += 8
-                                    log_data_len2 -= 8
-                                else:
-                                    logger.error('Expected activityID, got something else!')
-
-                        if has_private_data:
-                            if private_strings:    
-                                priv_str_v_offset, priv_str_len = struct.unpack('<HH', buffer[pos + pos3 : pos + pos3 + 4])
-                                pos3 += 4
-                                log_data_len2 -= 4
-                            else:
-                                logger.error('Did not read priv_str_v_offset as no private_strings are present @ log 0x{:X}! is_activity={}'.format(log_file_pos, bool(is_activity)))
-
-                        u5 = struct.unpack('<I', buffer[pos + pos3 : pos + pos3 + 4])[0]
-                        pos3 += 4
-                        log_data_len2 -= 4
-
-                        if has_alternate_uuid:
-                            if not has_msg_in_uuidtext: # Then 2 bytes (uuid_file_index) instead of UUID
-                                uuid_file_id = struct.unpack('<h', buffer[pos + pos3 : pos + pos3 + 2])[0]
-                                pos3 += 2
-                                log_data_len2 -= 2
-                                uuid_found = False
-                                for extra_ref in proc_info.extra_file_refs:
-                                    if (extra_ref.id == uuid_file_id) and \
-                                    ( (u5 >= extra_ref.v_offset) and ( (u5-extra_ref.v_offset) < extra_ref.data_size) ):  # found it
-                                        ut = catalog.FileObjects[extra_ref.uuid_file_index]
-                                        format_str = ut.ReadFmtStringFromVirtualOffset(fmt_str_v_offset)
-                                        imageUUID = ut.Uuid
-                                        senderImagePath = ut.library_path
-                                        imageOffset = u5 - extra_ref.v_offset
-                                        uuid_found = True
-                                        break
-                                if not uuid_found:
-                                    logger.error('no uuid found for absolute pc - uuid_file_id was {} u5=0x{:X} fmt_str_v_offset=0x{:X} @ 0x{:X} ct={}'.format(uuid_file_id, u5, fmt_str_v_offset, log_file_pos, ct))
-                                    format_str = '<compose failure [missing precomposed log]>' # error message from log utility
-                            else:             # UUID
-                                file_path = binascii.hexlify(buffer[pos + pos3 : pos + pos3 + 16]).decode('utf8').upper()
-                                pos3 += 16
-                                log_data_len2 -= 16
-                                ## try to get format_str and lib from uuidtext file
-                                ut = None
-                                # search in existing files, likely will not find it here!
-                                for obj in catalog.FileObjects:
-                                    if obj._file.filename == file_path:
-                                        ut = obj
-                                        break
-                                if not ut: # search in other_uuidtext, as we may have seen this earlier
-                                    ut = self.other_uuidtext.get(file_path, None)
-                                if not ut: # Not found, so open and parse new file
-                                    uuidtext_full_path = self.vfs.path_join(self.uuidtext_folder_path, file_path[0:2], file_path[2:])
-                                    file_object = self.vfs.get_virtual_file(uuidtext_full_path, 'Uuidtext')
-                                    ut = uuidtext_file.Uuidtext(file_object, UUID(file_path))
-                                    self.other_uuidtext[file_path] = ut # Add to other_uuidtext, so we don't have to parse it again
-                                    if not ut.Parse():
-                                        ut = None
-                                        logger.error('Error parsing uuidtext file {} @ 0x{:X} ct={}'.format(uuidtext_full_path, log_file_pos, ct))
-                                if ut:
-                                    format_str = ut.ReadFmtStringFromVirtualOffset(fmt_str_v_offset)
-                                    p_name = ut_cache.library_name
-                                    lib = ut.library_name
-                                    imageUUID = ut.Uuid
-                                    senderImagePath = ut.library_path
-                                else:
-                                    logger.debug("Could not read from uuidtext {} @ 0x{:X} ct={}".format(file_path, log_file_pos, ct))
-
-                        if not is_activity:
-                            if has_subsys:
-                                item_id = struct.unpack('<H', buffer[pos + pos3 : pos + pos3 + 2])[0]
-                                pos3 += 2
-                                log_data_len2 -= 2
-                                sub_sys, cat = proc_info.GetSubSystemAndCategory(item_id)
-                            
-                            if has_ttl:
-                                ttl = struct.unpack('<B', buffer[pos + pos3 : pos + pos3 + 1])[0]
-                                pos3 += 1
-                                log_data_len2 -= 1
-
-                            if has_data_ref: #This is a ref to an object stored as type 0x0602 blob
-                                data_ref_id = struct.unpack('<H', buffer[pos + pos3 : pos + pos3 + 2])[0]
-                                pos3 += 2
-                                log_data_len2 -= 2
-                                logger.debug('Data reference ID = {:4X}'.format(data_ref_id))
-
-                            if is_signpost:
-                                spid_val = struct.unpack('<Q', buffer[pos + pos3 : pos + pos3 + 8])[0]
-                                pos3 += 8
-                                log_data_len2 -= 8
-                                signpost_string = signpost_string % (spid_val)
-
-                            if has_sp_name:
-                                sp_name_ref = struct.unpack('<I', buffer[pos + pos3 : pos + pos3 + 4])[0]
-                                pos3 += 4
-                                log_data_len2 -= 4
-
-                        # Get format_str and lib now
-                        if has_msg_in_uuidtext: # u2 & 0x0002: # msg string in uuidtext file
-                            imageOffset = u5
-                            if has_alternate_uuid: # another uuidtext file was specified, already read that above
-                                if has_sp_name:
-                                    signpost_name = ut.ReadFmtStringFromVirtualOffset(sp_name_ref)
-                            else:
-                                imageUUID = ut_cache.Uuid
-                                senderImagePath = ut_cache.library_path
-                                format_str = ut_cache.ReadFmtStringFromVirtualOffset(fmt_str_v_offset)
-                                if has_sp_name:
-                                    signpost_name = ut_cache.ReadFmtStringFromVirtualOffset(sp_name_ref)
-                        elif has_msg_in_dsc: # u2 & 0x0004: # msg string in dsc file
-                            if has_sp_name:
-                                try:
-                                    signpost_name, c_a, c_b = dsc_cache.ReadFmtStringAndEntriesFromVirtualOffset(sp_name_ref)
-                                except (KeyError, IOError):
-                                    logger.error("Could not get signpost name! @ 0x{:X} ct={}".format(log_file_pos, ct))
-
-                            cache_b1 = dsc_cache.GetUuidEntryFromVirtualOffset(u5)
-                            if cache_b1:
-                                lib = cache_b1[4] # senderimage_name
-                                imageUUID = cache_b1[2]
-                                senderImagePath = cache_b1[3]
-                                imageOffset = u5 - cache_b1[0]
-
-                            try:
-                                if fmt_str_v_offset & 0x80000000: # check for highest bit
-                                    format_str = "%s"
-                                    logger.debug("fmt_str_v_offset highest bit set @ 0x{:X} ct={}".format(log_file_pos, ct))
-                                else:
-                                    format_str, cache_a, cache_b = dsc_cache.ReadFmtStringAndEntriesFromVirtualOffset(fmt_str_v_offset)
-                            except (KeyError, IOError):
-                                logger.error('Failed to get DSC msg string @ 0x{:X} ct={}'.format(log_file_pos, ct))
-
-                        elif has_alternate_uuid: pass #u2 & 0x0008: # Parsed above
-                        elif u1 == 7: # Loss
-                            pass
-                        else:
-                            logger.warning("No message string flags! @ 0x{:X} ct={}".format(log_file_pos, ct))
-
-                        if log_data_len2:
-                            strings_slice = ''
-                            if has_private_data:
-                                if private_strings:
-                                    strings_start_offset = 0
-                                    strings_len = len(private_strings)
-                                    strings_start_offset = priv_str_v_offset - strings_v_offset
-                                    if (strings_start_offset > len(private_strings)) or (strings_start_offset < 0):
-                                        logger.error('Error calculating strings virtual offset @ 0x{:X} ct={}'.format(log_file_pos, ct))
-                                    strings_slice = private_strings[strings_start_offset : strings_start_offset + priv_str_len]
-                                else:
-                                    logger.error('Flag has_private_data but no strings present! @ 0x{:X} ct={}'.format(log_file_pos, ct))
-                            else:
-                                strings_slice = ''
-                            if u1 & 0x7 == 0x7: pass #Loss
-                            elif u1 & 0x3 == 0x3: # data_descriptor_at_buffer_end
-                                log_data = self.ReadLogDataBuffer2(buffer[pos + pos3 : pos + pos3 + log_data_len2], log_data_len2, strings_slice)
-                            else:
-                                log_data = self.ReadLogDataBuffer(buffer[pos + pos3 : pos + pos3 + log_data_len2], log_data_len2, strings_slice, has_context_data)
-                        else:
-                            log_data = None
-                        if has_data_ref:
-                            unique_ref = data_ref_id << 64 | ct
-                            log_data = self.large_data.get(unique_ref, None)
-                            if log_data:
-                                # let's delete it now from the dict, there should only be one reference!
-                                del self.large_data[unique_ref]
-                                log_data = log_data = self.ReadLogDataBuffer(log_data, len(log_data), '', has_context_data)
-                            else:
-                                logger.error('Data Reference not found for unique_ref=0x{:X} ct={}!'.format(unique_ref, ct))
-                                format_str = "<decode: missing data>"
-                                # TODO - Sometimes this data is in another file, create a mechanism to deal with that
-                                # Eg: Logdata.Livedata.tracev3 will reference entries from Persist\*.tracev3 
-                                #  There are very few of these in practice.
-
-                        if u1 == 7: #Loss
-                            log_msg = self.CreateLossMsg(ts, ct, continuousTime, buffer[pos + pos3 : pos + pos3 + log_data_len2], log_data_len2)
-                        else:
-                            log_msg = self.RecreateMsgFromFmtStringAndData(format_str, log_data, log_file_pos) if log_data else format_str
-                        if len(act_id) > 2: parentActivityIdentifier = act_id[-2]
-                        # TODO:For Loss type message, all other log fields are zero, confirm with more samples.
-                        logs.append([self.file.filename, log_file_pos, ct, time, thread, log_type, act_id[-1], parentActivityIdentifier, \
-                                        pid, euid, ttl, p_name, lib, sub_sys, cat,\
-                                        signpost_name, signpost_string if is_signpost else '', 
-                                        imageOffset, imageUUID, processImageUUID, senderImagePath, processImagePath,
-                                        log_msg                            
-                                    ])
-                    except (ValueError, IOError) as ex:
-                        logger.exception("Exception while processing log @ 0x{:X} ct={}, skipping that log entry!".format(log_file_pos, ct))
-                    ##
-                    debug_log_count += 1
-                    
-                    pos2 += log_data_len
-                    #padding
-                    if ((pos2 - start_skew) % 8) != 0: 
-                        pos2 += 8 - ((pos2 - start_skew) % 8)
-                    num_logs_debug += 1
-
-                logger.debug("Parsed {} type 6001 logs".format(num_logs_debug))
-
-                pos += data_size
-                if ((pos - start_skew) % 8):
+            pos = end_pos
+            if (pos - start_skew) % 8:
+                if tag == self._CHUNK_TAG_FIREHOSE:
                     # sometimes no padding after privatedata. Try to detect null byte, if so pad it.
-                    if (pos+1 < len_buffer) and (buffer[pos:pos+1] == b'\x00'): 
+                    if (pos+1 < chunk_data_size) and (chunk_data[pos:pos+1] == b'\x00'):
                         pad_len = 8 - ((pos - start_skew) % 8)
                         pos += pad_len
                     else:
-                        logger.debug('Avoided padding for firehose chunk ending @ 0x{:X}'.format(debug_file_pos + pos))
-            elif tag == 0x6002: # Oversize
-                ct, data_ref_id, data_len = struct.unpack('<QII', buffer[pos + pos2 : pos + pos2 + 16])
-                pos2 += 16
-                data = buffer[pos + pos2 : pos + pos2 + data_len]
-                self.large_data[data_ref_id << 64 | ct] = data
-                
-                pos2 += data_len
-                ## Debug print
-                ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
-                time = ts.time_stamp + (ct - ts.continuousTime)*(1.0*ts.ts_numerator)/ts.ts_denominator
-                logger.debug("Type 6002 timestamp={} ({}), data_ref_id=0x{:X} @ 0x{:X}".format(self._ReadAPFSTime(time), ct, data_ref_id, log_file_pos))
-                pos += data_size
-                if (pos - start_skew) % 8:
-                    pad_len = 8 - ((pos - start_skew) % 8)
-                    pos += pad_len
-            elif tag == 0x6003: # State
-                log_type = 'State'
-                ct, activity_id, un7 = struct.unpack("<QII", buffer[pos + pos2 : pos + pos2 + 16])
-                pos2 += 16
-                uuid = UUID(bytes = buffer[pos + pos2 : pos + pos2 + 16])
-                pos2 += 16
-                data_type, data_len = struct.unpack('<II', buffer[pos + pos2 : pos + pos2 + 8])
-                pos2 += 8
-                if data_type == 1:
-                    pos2 += 128  # type 1 does not have any strings, it is blank or random bytes
+                        logger.warning('Avoided padding for firehose chunk ending @ 0x{:X}'.format(debug_file_pos + pos))
+
                 else:
-                    obj_type_str_1 = self._ReadCString(buffer[pos + pos2 : pos + pos2 + 64])
-                    pos2 += 64
-                    obj_type_str_2 = self._ReadCString(buffer[pos + pos2 : pos + pos2 + 64]) 
-                    pos2 += 64
-
-                name = self._ReadCString(buffer[pos + pos2 : pos + pos2 + 64], 64)
-                pos2 += 64
-                # datatype  1=plist, 2=custom object, 3=unknown data object
-                log_msg = ''
-                if data_len:
-                    data = buffer[pos + pos2 : pos + pos2 + data_len]
-                    if data_type == 1: # plist  # serialized NS/CF object [Apple]
-                        try:
-                            plist = biplist.readPlistFromString(data)
-                            log_msg = str(plist)
-                        except InvalidPlistException:
-                            logger.exception('Problem reading plist from log @ 0x{:X} ct={}'.format(log_file_pos, ct))
-                    elif data_type == 2:  #custom object, not being read by log utility in many cases!
-                        logger.error('Did not read data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
-                    elif data_type == 3:  # custom [Apple] #TODO - read non-plist data
-                        if obj_type_str_1 == 'location' and obj_type_str_2 == '_CLClientManagerStateTrackerState':
-                            log_msg = self._Read_CLClientManagerStateTrackerState(data)
-                        else:
-                            logger.error('Did not read data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
-                    else:
-                        logger.error('Unknown data of type {}, t1={}, t2={}, length=0x{:X} from log @ 0x{:X} ct={}'.format(data_type, obj_type_str_1, obj_type_str_2, data_len, log_file_pos, ct))
-                    pos2 += data_len
-
-                try: # for any uncaught exception
-                    ut_cache = catalog.FileObjects[proc_info.uuid_file_index]
-                    p_name = ut_cache.library_name
-
-                    senderImagePath = '' # Can be same as processImagePath
-                    processImagePath = ut_cache.library_path
-                    imageOffset = 0  # Same as senderProgramCounter
-                    imageUUID = uuid
-                    processImageUUID = ut_cache.Uuid
-
-                    ts = self._FindClosestTimesyncItemInList(self.boot_uuid_ts_list, ct)
-                    time = ts.time_stamp + (ct - ts.continuousTime)*(1.0*ts.ts_numerator)/ts.ts_denominator
-                    #logger.debug("Type 6003 timestamp={}".format(self._ReadAPFSTime(time)))
-
-                    logs.append([self.file.filename, log_file_pos, ct, time, 0, log_type, 0, 0, \
-                                pid, euid, ttl, p_name, str(uuid).upper(), '', '',\
-                                '', '', 
-                                imageOffset, imageUUID, processImageUUID, senderImagePath, processImagePath, 
-                                name + "\n" + log_msg                        
-                                ])
-                except (ValueError, TypeError):
-                    logger.exception("Exception while processing logtype 'State' @ 0x{:X} ct={}, skipping that log entry!".format(log_file_pos, ct))
-                debug_log_count += 1
-
-                pos += data_size
-                if (pos - start_skew) % 8:
                     pad_len = 8 - ((pos - start_skew) % 8)
                     pos += pad_len
-            else:
-                logger.info("Unexpected tag value 0x{:X} @ 0x{:X} (Expected 0x6001, 0x6002 or 0x6003)".format(tag, log_file_pos))
-                pos += data_size
-                pad_len = (pos - start_skew) % 8
-                if pad_len:
-                    pos += pad_len
+
             #padding,moved to individual sections due to anomaly with few files, where privatedata in 0x6001 has no padding after!
 
-    
     def GetProcInfo(self, proc_id1, proc_id2, chunk_meta):
         proc_info = chunk_meta.ProcInfos.get( proc_id2 | (proc_id1 << 32) , None)
         if proc_info == None:
@@ -1235,77 +1474,49 @@ class TraceV3(data_format.BinaryDataFormat):
         return proc_info
 
     def Parse(self, log_list_process_func=None):
-        '''Parse the traceV3 file, returns True/False.
-           'log_list_process_func' is a function the caller provides to 
-           process a list of logs. It gets called periodically as logs are extracted.
-           Its syntax is log_list_process_func(logs_list, tracev3_object)
-           Here log_list = [ log_1, log_2, .. ], where each log_x item is a tuple
-           log_x = ( log_file_pos, continuous_time, time, thread, log_type, 
-                    activity_id, parent_activity_id, 
-                    pid, euid, ttl, p_name, lib, sub_system, category,
-                    signpost_name, signpost_string, 
-                    image_offset, image_UUID, process_image_UUID, 
-                    sender_image_path, process_image_path,
-                    log_msg
-                   ) 
+        '''Parses a tracev3 file.
+
+        self._file.is_valid is set to False if this method encounters issues
+        parsing the file.
+
+        'log_list_process_func' is a function the caller provides to
+        process a list of logs. It gets called periodically as logs are extracted.
+        Its syntax is log_list_process_func(logs_list, tracev3_object)
+        Here log_list = [ log_1, log_2, .. ], where each log_x item is a tuple
+        log_x = ( log_file_pos, continuous_time, time, thread, log_type,
+                  activity_id, parent_activity_id,
+                  pid, euid, ttl, p_name, lib, sub_system, category,
+                  signpost_name, signpost_string,
+                  image_offset, image_UUID, process_image_UUID,
+                  sender_image_path, process_image_path,
+                  log_msg )
+
+        Args:
+          log_list_process_func (Optional[function]): callback function.
+
+        Returns:
+          bool: True if successful, False otherwise.
         '''
-        logger.debug("-"*100 + "\r\nParsing traceV3 file {}".format(self.file.filename))
-        f = self.file.open()
-        if not f:
-            return False
+        logger.debug("-" * 100)
+        logger.debug("Parsing tracev3 file {0:s}".format(self._file.filename))
+
+        file_object = self._file.open()
+        if not file_object:
+          return False
+
         try:
-            file_size = self.file.get_file_size()
-            if file_size < 16:
-                logger.info('File too small to be valid! File size = {}'.format(file_size))
-                return False
-            chunk_header = f.read(16)
-            tag, subtag, data_length = self.ParseChunkHeader(chunk_header, 0)
-            if tag != 0x1000:
-                logger.info('Wrong signature in traceV3 file, got 0x{:X} instead of 0x1000'.format(tag))
-                return False
-            if subtag != 0x11:
-                logger.error('Cannot process this version of unified logging, version=0x{:X}'.format(subtag))
-                return False
-            
-            buffer = f.read(data_length) # fileheader_data + items
-            self.ParseFileHeader(buffer, data_length)
-            
-            pos = 16 + data_length
-            catalog = None
-            meta_chunk_index = 0
-            global debug_log_count
-            debug_log_count = 0
-            uncompressed_file_pos = pos
-            logs = []
-            while pos < file_size:
-                f.seek(pos)
-                chunk_header = f.read(16)
-                tag, subtag, data_length = self.ParseChunkHeader(chunk_header, uncompressed_file_pos)
-                buffer = f.read(data_length)
-                # Process buffer here
-                if tag == 0x600B:
-                    meta_chunk_index = 0
-                    catalog = self.ProcessMetaChunk(buffer)
-                    uncompressed_file_pos += 16 + data_length
-                elif tag == 0x600D:
-                    uncompressed_buffer = self._DecompressChunkData(buffer, len(buffer))
-                    self.ProcessDataChunk(uncompressed_buffer, catalog, meta_chunk_index, uncompressed_file_pos + 16, logs)
-                    meta_chunk_index += 1
-                    uncompressed_file_pos += 16 + len(uncompressed_buffer)
-                else:
-                    logger.info("Unknown header for chunk - 0x{:X} , skipping chunk @ 0x{:X}!".format(tag, pos))
-                    uncompressed_file_pos += 16 + data_length
-                if data_length % 8: # Go to QWORD boundary
-                    data_length += 8 - (data_length % 8)
-                if uncompressed_file_pos % 8: # just for the uncompressed file pos
-                    uncompressed_file_pos += 8 - (data_length % 8)
-                pos = pos + 16 + data_length
-                if log_list_process_func and (len(logs) > 100000):
-                    log_list_process_func(logs, self)
-                    logs = []
-            # outside loop, end of file reached, write remaining logs
-            if log_list_process_func and (len(logs) > 0):
-                log_list_process_func(logs, self)
-        except (struct.error, lz4.block.LZ4BlockError, ValueError, IOError, KeyError):
-            logger.exception('traceV3 Parser error')
-        return True
+            self._file_size = self._file.get_file_size()
+            result = self._ParseFileObject(
+                file_object, log_list_process_func=log_list_process_func)
+        # TODO: remove the need to catch AttributeError.
+        except (AttributeError, IOError, OSError, ValueError, struct.error):
+            logger.exception('tracev3 Parser error')
+            result = False
+
+        if not result:
+            self._file.is_valid = False
+
+        global debug_log_count
+        debug_log_count = self._debug_log_count
+
+        return result

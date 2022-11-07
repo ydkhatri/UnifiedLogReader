@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # This script will produce a decompressed .tracev3 file for analysis.
 # Provide either a file or a folder as argument, it will decompress all .tracev3
@@ -27,7 +27,6 @@ def DecompressFile(input_path, output_path):
                     begin_pos = trace_file.tell() - 4
                     trace_file.seek(begin_pos + 8)
                     struct_len = struct.unpack('<Q', trace_file.read(8))[0]
-                    #print("index={} pos=0x{:X}".format(index, begin_pos), binascii.hexlify(header))
 
                     trace_file.seek(begin_pos)
                     block_data = trace_file.read(16 + struct_len)
@@ -52,7 +51,7 @@ def DecompressFile(input_path, output_path):
                                     uncompressed += block_data[chunk_start + 8:chunk_start + 8 + uncompressed_size]
                                     chunk_start += 8 + uncompressed_size
                                 else:
-                                    print('Unknown compression value {} @ 0x{:X} - {}'.format(binascii.hexlify(chunk_header), begin_pos + chunk_start, chunk_header))
+                                    print(f'Unknown compression value {binascii.hexlify(chunk_header)} @ 0x{(begin_pos + chunk_start):X} - {chunk_header}')
                                     break
                                 chunk_header = block_data[chunk_start:chunk_start + 4]
                             ###
@@ -60,9 +59,9 @@ def DecompressFile(input_path, output_path):
                             out_file.write(struct.pack('<Q', len(uncompressed))) # New size
                             out_file.write(uncompressed)
                         else:
-                            print('Unknown compression type {}'.format(binascii.hexlify(block_data[16:20])))
+                            print(f'Unknown compression type {binascii.hexlify(block_data[16:20])}')
                     else:
-                        print('Unknown header value encountered : {}, struct_len=0x{:X}'.format(binascii.hexlify(header), struct_len))
+                        print(f'Unknown header value encountered : {binascii.hexlify(header)}, struct_len=0x{struct_len:X}')
                         out_file.write(block_data[0:8]) # Same Header !
                         out_file.write(block_data) # Same data!
                     if struct_len % 8: # Go to QWORD boundary on input
@@ -82,7 +81,7 @@ def RecurseDecompressFiles(input_path):
     for file_name in files:
         input_file_path = os.path.join(input_path, file_name)
         if file_name.lower().endswith('.tracev3'):
-            print("Processing file - ", input_file_path)
+            print(f"Processing file - {input_file_path}")
             DecompressFile(input_file_path, input_file_path + ".dec")
         elif os.path.isdir(input_file_path):
             RecurseDecompressFiles(input_file_path)
@@ -94,5 +93,5 @@ else:
     if os.path.isdir(input_path):
         RecurseDecompressFiles(input_path)
     else:
-        print("Processing file - ", input_path)
+        print(f"Processing file - {input_path}")
         DecompressFile(input_path, input_path + ".dec")

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Unified log reader
 # Copyright (c) 2018  Yogesh Khatri <yogesh@swiftforensics.com> (@swiftforensics)
@@ -78,11 +78,11 @@ class OutputWriter(object):
         '''
 
     @abc.abstractmethod
-    def WriteLogEntry(self, log):
+    def WriteLogEntry(self, log_entry):
         '''Writes a Unified Log entry.
 
         Args:
-          log (???): log entry:
+          log (LogEntry): log entry.
         '''
 
 
@@ -152,6 +152,22 @@ class SQLiteDatabaseOutputWriter(object):
 
         return True
 
+    def log_entry_tuple(self, log_entry):
+        time_value = UnifiedLogLib.ReadAPFSTime(log_entry.time)
+        values_tuple = (
+            log_entry.filename, log_entry.log_file_pos, log_entry.ct,
+            time_value, log_entry.thread, log_entry.log_type,
+            log_entry.act_id, log_entry.parentActivityIdentifier,
+            log_entry.pid, log_entry.euid, log_entry.ttl,
+            log_entry.p_name, log_entry.lib, log_entry.sub_sys,
+            log_entry.cat, log_entry.signpost_name,
+            log_entry.signpost_string, log_entry.imageOffset,
+            '{0!s}'.format(log_entry.imageUUID),
+            '{0!s}'.format(log_entry.processImageUUID),
+            log_entry.senderImagePath, log_entry.processImagePath,
+            log_entry.log_msg)
+        return values_tuple
+
     def WriteLogEntries(self, logs):
         '''Writes several Unified Log entries.
 
@@ -159,29 +175,23 @@ class SQLiteDatabaseOutputWriter(object):
           logs (???): list of log entries:
         '''
         if self._connection:
-            for log in logs:
-                log[3] = UnifiedLogLib.ReadAPFSTime(log[3])
-                log[18] = '{0!s}'.format(log[18])
-                log[19] = '{0!s}'.format(log[19])
-
+            value_tuples = [self.log_entry_tuple(x) for x in logs]
             # TODO: cache queries to use executemany
             try:
-                cursor = self._connection.cursor()
-                cursor.executemany(self._INSERT_LOGS_VALUES_QUERY, logs)
-                self._connection.commit()
+                cursor = self._connection.cursor() 
+                cursor.executemany(self._INSERT_LOGS_VALUES_QUERY, value_tuples)
 
             except sqlite3.Error:
                 logger.exception('Error inserting data into database')
+            self._connection.commit()
 
-
-    def WriteLogEntry(self, log):
+    def WriteLogEntry(self, log_entry):
         '''Writes a Unified Log entry.
 
         Args:
-          log (???): log entry:
+          log (LogEntry): log entry.
         '''
-        self.WriteLogEntries([log])
-
+        self.WriteLogEntries([log_entry])
 
 class FileOutputWriter(object):
     '''Output writer that writes output to a file.'''
@@ -232,8 +242,6 @@ class FileOutputWriter(object):
         logger.info('Creating output file %s', self._path)
 
         try:
-            # io.open() is portable between Python 2 and 3
-            # using text mode so we don't have to care about end-of-line character
             self._file_object = io.open(self._path, 'wt', encoding='utf-8')
             try:
                 if self._mode == 'TSV_ALL':
@@ -257,44 +265,58 @@ class FileOutputWriter(object):
         for log in logs:
             self.WriteLogEntry(log)
 
-    def WriteLogEntry(self, log):
+    def WriteLogEntry(self, log_entry):
         '''Writes a Unified Log entry.
 
         Args:
-          log (???): log entry:
+          log (LogEntry): log entry.
         '''
         if self._file_object:
-            log[3] = UnifiedLogLib.ReadAPFSTime(log[3])
+            time_value = UnifiedLogLib.ReadAPFSTime(log_entry.time)
 
             try:
-                if self._mode == 'TSV_ALL':
-                    log[18] = '{0!s}'.format(log[18]).upper()
-                    log[19] = '{0!s}'.format(log[19]).upper()
+                if self._mode == 'ALL':
+                    imageUUID = '{0!s}'.format(log_entry.imageUUID).upper()
+                    processImageUUID = '{0!s}'.format(
+                        log_entry.processImageUUID).upper()
 
                     self._file_object.write((
-                        '{}\t0x{:X}\t{}\t{}\t0x{:X}\t{}\t0x{:X}\t0x{:X}\t{}\t'
-                        '{}\t{}\t({})\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t'
-                        '{}\n').format(
-                            log[0], log[1], log[2], log[3], log[4], log[5],
-                            log[6], log[7], log[8], log[9], log[10], log[11],
-                            log[12], log[13], log[14], log[15], log[16],
-                            log[17], log[18], log[19], log[20], log[21],
-                            log[22]))
+                        u'{}\t0x{:X}\t{}\t{}\t0x{:X}\t{}\t0x{:X}\t0x{:X}\t{}\t'
+                        u'{}\t{}\t({})\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t'
+                        u'{}').format(
+                            log_entry.filename, log_entry.log_file_pos,
+                            log_entry.ct, time_value, log_entry.thread,
+                            log_entry.log_type, log_entry.act_id,
+                            log_entry.parentActivityIdentifier, log_entry.pid,
+                            log_entry.euid, log_entry.ttl, log_entry.p_name,
+                            log_entry.lib, log_entry.sub_sys, log_entry.cat,
+                            log_entry.signpost_name, log_entry.signpost_string,
+                            log_entry.imageOffset, imageUUID, processImageUUID,
+                            log_entry.senderImagePath, log_entry.processImagePath,
+                            log_entry.log_msg))
 
                 else:
-                    signpost = ''  # (log[15] + ':') if log[15] else ''
-                    if log[15]:
-                        signpost += '[' + log[16] + ']'
-                    msg = (signpost + ' ') if signpost else ''
-                    msg += log[11] + ' ' + (( '(' + log[12] + ') ') if log[12] else '')
-                    if len(log[13]) or len(log[14]):
-                        msg += '[' + log[13] + ':' + log[14] + '] '
-                    msg += log[22]
+                    msg_parts = []
+                    if log_entry.signpost_name:
+                        msg_parts.append('[{0:s}]'.format(
+                            log_entry.signpost_string))
+
+                    msg_parts.append('{0:s} '.format(log_entry.p_name))
+                    if log_entry.lib:
+                      msg_parts.append('({0:s}) '.format(log_entry.lib))
+
+                    if log_entry.sub_sys or log_entry.cat:
+                      msg_parts.append('[{0:s}:{1:s}] '.format(
+                          log_entry.sub_sys, log_entry.cat))
+
+                    msg_parts.append('{0:s} '.format(log_entry.log_msg))
+
+                    msg = ''.join(msg_parts)
 
                     self._file_object.write((
-                        '{time} {li[4]:<#10x} {li[5]:11} {li[6]:<#20x} '
-                        '{li[8]:<6} {li[10]:<4} {message}\n').format(
-                            li=log, time=log[3], message=msg.replace('\n',',')))
+                        u'{time:<26} {li.thread:<#10x} {li.log_type:<11} {li.act_id:<#20x} '
+                        u'{li.pid:<6} {li.ttl:<4} {message}\n').format(
+                            li=log_entry, time=str(time_value), message=msg.replace('\n',',')))
 
             except (IOError, OSError):
                 logger.exception('Error writing to output file')
@@ -447,19 +469,19 @@ def Main():
     tracev3_path = args.tracev3_path.rstrip('\\/')
 
     if not os.path.exists(uuidtext_folder_path):
-        print('Exiting..UUIDTEXT Path not found {}'.format(uuidtext_folder_path))
+        print(f'Exiting..UUIDTEXT Path not found {uuidtext_folder_path}')
         return
 
     if not os.path.exists(timesync_folder_path):
-        print('Exiting..TIMESYNC Path not found {}'.format(timesync_folder_path))
+        print(f'Exiting..TIMESYNC Path not found {timesync_folder_path}')
         return
 
     if not os.path.exists(tracev3_path):
-        print('Exiting..traceV3 Path not found {}'.format(tracev3_path))
+        print(f'Exiting..traceV3 Path not found {tracev3_path}')
         return
 
     if not os.path.exists(output_path):
-        print ('Creating output folder {}'.format(output_path))
+        print (f'Creating output folder {output_path}')
         os.makedirs(output_path)
 
     log_file_path = os.path.join(output_path, "Log." + time.strftime("%Y%m%d-%H%M%S") + ".txt")

@@ -36,6 +36,7 @@ class BinaryDataFormat(object):
                 string = data[0:null_pos].decode('utf8')
         except (ValueError, UnicodeDecodeError):
             logger.exception('Error reading C-String')
+            logger.error(str(data))
 
         return string
 

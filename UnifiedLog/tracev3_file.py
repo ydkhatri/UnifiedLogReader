@@ -937,7 +937,7 @@ class TraceV3(data_format.BinaryDataFormat):
         time = ts.time_stamp + (ct - ts.continuousTime)*(1.0*ts.ts_numerator)/ts.ts_denominator
         logger.debug("Type 6002 timestamp={} ({}), data_ref_id=0x{:X} @ 0x{:X}".format(self._ReadAPFSTime(time), ct, data_ref_id, log_file_pos))
 
-    def _ParseStateChunkData(self, chunk_data, catalog, proc_info, logs):
+    def _ParseStateChunkData(self, chunk_data, catalog, proc_info, logs, log_file_pos):
         '''Parses state chunk data.
 
         The state chunk is a chunk with tag 0x6001.
@@ -956,6 +956,10 @@ class TraceV3(data_format.BinaryDataFormat):
         uuid = UUID(bytes=chunk_data[32:48])
         data_type, data_len = struct.unpack('<II', chunk_data[48:56])
 
+        pid = proc_info.pid
+        euid = proc_info.euid
+        ttl = 0 # FIX ME before some refactoring this probably was filled
+
         # type 1 does not have any strings, it is blank or random bytes
         if data_type != 1:
             obj_type_str_1 = self._ReadCString(chunk_data[56:120])
@@ -970,7 +974,7 @@ class TraceV3(data_format.BinaryDataFormat):
             if data_type == 1: # plist  # serialized NS/CF object [Apple]
                 try:
                     plist = biplist.readPlistFromString(data)
-                    log_msg = unicode(plist)
+                    log_msg = str(plist)
                 except (ImportError, NameError, UnboundLocalError):
                     raise
 
@@ -1446,7 +1450,7 @@ class TraceV3(data_format.BinaryDataFormat):
                 self._ParseOversizeChunkData(chunk_data[pos:end_pos], debug_file_pos)
 
             elif tag == self._CHUNK_TAG_STATE:
-                self._ParseStateChunkData(chunk_data[pos:end_pos], catalog, proc_info, logs)
+                self._ParseStateChunkData(chunk_data[pos:end_pos], catalog, proc_info, logs, debug_file_pos)
 
             else:
                 logger.info("Unexpected tag value 0x{:X} @ 0x{:X} (Expected 0x6001, 0x6002 or 0x6003)".format(tag, log_file_pos))

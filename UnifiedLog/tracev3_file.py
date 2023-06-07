@@ -69,7 +69,7 @@ class TraceV3(data_format.BinaryDataFormat):
         self.uuidtext_folder_path = uuidtext_folder_path
         self.dsc_folder_path = v_fs.path_join(uuidtext_folder_path, "dsc")
         self.other_uuidtext = {} # cacheing uuidtext files referenced individually
-        self.regex_pattern = r"%(\{[^\}]{1,64}\})?([0-9. *\-+#']{0,6})([hljztLq]{0,2})([@dDiuUxXoOfeEgGcCsSpaAFP])"
+        self.regex_pattern = r"%(\{[^\}]{1,}\})?([0-9. *\-+#']{0,6})([hljztLq]{0,2})([@dDiuUxXoOfeEgGcCsSpaAFP])"
         # Regex pattern looks for strings in this format:  % {..} flags width.precision modifier specifier
         #                                                     --   -------------------   ------   ------
         #   Groups                                            g1            g2              g3       g4

@@ -1,5 +1,5 @@
 #!/bin/sh
-BASE=/tmp/decode_log
+BASE=/tmp/decode_log2
 rm -rf $BASE
 mkdir -p $BASE
 unzip -d $BASE $1 /private/var/db\* 

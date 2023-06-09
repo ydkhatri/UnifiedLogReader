@@ -4,6 +4,7 @@
 
 from __future__ import unicode_literals
 
+import os
 import unittest
 import uuid
 
@@ -75,7 +76,7 @@ class TraceV3Test(test_lib.BaseTestCase):
             b'Ts  ', 0, uuid.UUID('e955fe07-ab9d-48ec-a851-97ac5c611182'),
             0, 0, 0, 0, 0)
 
-        timesync_item = resources.TimesyncItem(0, 0, 0, 0, 0)
+        timesync_item = resources.TimesyncItem(0, 0, 0, 0, 0, 0, 1)
 
         timesync = resources.Timesync(timesync_header)
         timesync.items = [timesync_item]
@@ -100,7 +101,7 @@ class TraceV3Test(test_lib.BaseTestCase):
         uuidtext_path = self._GetTestFilePath([])
 
         test_file = tracev3_file.TraceV3(
-            file_system, file_entry, timesync_list, uuidtext_path)
+            file_system, file_entry, timesync_list, uuidtext_path, None)
 
         return file_entry, test_file
 
@@ -147,6 +148,7 @@ class TraceV3Test(test_lib.BaseTestCase):
         file_entry, test_file = self._CreateTestFile()
 
         with open(path, 'rb') as file_object:
+          test_file._file_size = os.stat(path).st_size
           test_file._ParseFileObject(file_object)
 
     def testParseFirehoseChunkData(self):
@@ -193,7 +195,7 @@ class TraceV3Test(test_lib.BaseTestCase):
         proc_info = resources.ProcInfo(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
         tracepoint_data_size, log_entry = (
             test_file._ParseFirehoseTracepointData(
-                self._CHUNK_DATA_FIREHOSE[32:], 0, 0, catalog, proc_info, ''))
+                self._CHUNK_DATA_FIREHOSE[32:], 0, 0, catalog, proc_info, '', 0))
 
         self.assertEqual(tracepoint_data_size, 81)
         self.assertIsNotNone(log_entry)

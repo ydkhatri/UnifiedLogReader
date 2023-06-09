@@ -86,7 +86,7 @@ class TimesyncItemTest(test_lib.BaseTestCase):
 
     def testInitialize(self):
         '''Tests the __init__ function.'''
-        test_item = resources.TimesyncItem(0, 0, 0, 0, 0)
+        test_item = resources.TimesyncItem(0, 0, 0, 0, 0, 0, 1)
         self.assertIsNotNone(test_item)
 
 

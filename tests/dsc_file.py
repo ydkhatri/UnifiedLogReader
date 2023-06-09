@@ -99,6 +99,8 @@ class DscTest(test_lib.BaseTestCase):
         file_entry = virtual_file.VirtualFile(path, filetype='dsc')
 
         test_file = dsc_file.Dsc(file_entry)
+        # Format version is set after initial parsing.
+        # test_file._format_version = "Mock Value"
 
         test_file.DebugPrintDsc()
 

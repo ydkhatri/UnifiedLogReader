@@ -138,7 +138,7 @@ class Dsc(data_format.BinaryDataFormat):
 
     def DebugPrintDsc(self):
         logger.debug("DSC version={0:s} file={1:s}".format(
-            self._format_version, self._file.filename))
+            self._format_version or "Unknown version", self._file.filename))
 
         logger.debug("Range entry values")
         for range_entry in self.range_entries:

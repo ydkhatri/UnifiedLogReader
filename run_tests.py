@@ -5,7 +5,6 @@
 import sys
 import unittest
 
-
 if __name__ == '__main__':
     print('Using Python version {0!s}'.format(sys.version))
 

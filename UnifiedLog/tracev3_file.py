@@ -683,8 +683,8 @@ class TraceV3(data_format.BinaryDataFormat):
                         logger.debug("fmt_str_v_offset highest bit set @ 0x{:X} ct={}".format(log_file_pos, ct))
                     else:
                         format_str, cache_a, cache_b = dsc_cache.ReadFmtStringAndEntriesFromVirtualOffset(fmt_str_v_offset)
-                except (KeyError, IOError):
-                    logger.error('Failed to get DSC msg string @ 0x{:X} ct={}'.format(log_file_pos, ct))
+                except (KeyError, IOError) as err:
+                    logger.error('Failed to get DSC msg string @ 0x{:X} ct={} err={:s}'.format(log_file_pos, ct, str(err)))
 
             elif has_alternate_uuid: #u2 & 0x0008: # Parsed above
                 pass

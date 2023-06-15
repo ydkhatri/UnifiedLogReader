@@ -56,32 +56,64 @@ class Dsc(data_format.BinaryDataFormat):
         major_version, minor_version, num_range_entries, num_uuid_entries = (
             struct.unpack("<HHII", file_header_data[4:16]))
 
+        if major_version > 2:
+            raise UserWarning("Unsupported DSC Format")
+
         self._format_version = '{0:d}.{1:d}'.format(major_version, minor_version)
 
         while len(self.range_entries) < num_range_entries:
-            range_entry_data = file_object.read(16)
+            if major_version == 1:
+                range_entry_data = file_object.read(16)
 
-            uuid_index, v_off, data_offset, data_len = struct.unpack(
-                "<IIII", range_entry_data)
-            range_entry = [uuid_index, v_off, data_offset, data_len]
-            self.range_entries.append(range_entry)
+                uuid_index, v_off, data_offset, data_len = struct.unpack(
+                    "<IIII", range_entry_data)
+                range_entry = [uuid_index, v_off, data_offset, data_len]
+                self.range_entries.append(range_entry)
+            elif major_version == 2:
+                range_entry_data = file_object.read(24)
+                v_off, data_offset, data_len, uuid_index = struct.unpack(
+                    "<QIIQ", range_entry_data)
+                range_entry = [uuid_index, v_off, data_offset, data_len]
+                self.range_entries.append(range_entry)
+            else:
+                raise UserWarning("Unsupported DSC Format")
+
 
         uuid_entry_offset = file_object.tell()
         while len(self.uuid_entries) < num_uuid_entries:
-            file_object.seek(uuid_entry_offset, os.SEEK_SET)
-            uuid_entry_data = file_object.read(28)
-            uuid_entry_offset += 28
+            if major_version == 1:
+                file_object.seek(uuid_entry_offset, os.SEEK_SET)
+                uuid_entry_data = file_object.read(28)
+                uuid_entry_offset += 28
 
-            v_off, size = struct.unpack("<II", uuid_entry_data[:8])
-            uuid_object = UUID(bytes=uuid_entry_data[8:24])
-            data_offset = struct.unpack("<I", uuid_entry_data[24:])[0]
+                v_off, size = struct.unpack("<II", uuid_entry_data[:8])
+                uuid_object = UUID(bytes=uuid_entry_data[8:24])
+                data_offset = struct.unpack("<I", uuid_entry_data[24:])[0]
 
-            file_object.seek(data_offset, os.SEEK_SET)
-            path_data = file_object.read(1024) # File path should not be >1024
+                file_object.seek(data_offset, os.SEEK_SET)
+                path_data = file_object.read(1024) # File path should not be >1024
 
-            lib_path = self._ReadCString(path_data)
-            lib_name = posixpath.basename(lib_path)
+                lib_path = self._ReadCString(path_data)
+                lib_name = posixpath.basename(lib_path)
+            elif major_version == 2:
+                file_object.seek(uuid_entry_offset, os.SEEK_SET)
+                uuid_entry_data = file_object.read(32)
+                uuid_entry_offset += 32
+
+                v_off, size = struct.unpack("<QI", uuid_entry_data[:12])
+                uuid_object = UUID(bytes=uuid_entry_data[12:28])
+                data_offset = struct.unpack("<I", uuid_entry_data[28:])[0]
+
+                file_object.seek(data_offset, os.SEEK_SET)
+                path_data = file_object.read(1024)  # File path should not be >1024
+
+                lib_path = self._ReadCString(path_data)
+                lib_name = posixpath.basename(lib_path)
+            else:
+                raise UserWarning("Unsupported DSC Format")
+
             self.uuid_entries.append([v_off, size, uuid_object, lib_path, lib_name])
+
 
         return True
 

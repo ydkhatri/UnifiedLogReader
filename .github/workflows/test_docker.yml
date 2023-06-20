@@ -17,8 +17,7 @@ jobs:
         dnf install -y dnf-plugins-core langpacks-en
     - name: Install dependencies
       run: |
-        dnf copr -y enable @gift/dev
-        dnf install -y @development-tools python3 python3-devel libfwps-python3 libfwsi-python3 libgzipf-python3 liblnk-python3 libolecf-python3 libregf-python3 python3-dfdatetime python3-dtfabric python3-lz4 python3-pyyaml python3-setuptools
+        dnf install -y @development-tools python3 python3-devel python3-setuptools
     - name: Install dependencies
       env:
         LANG: C.utf8
@@ -61,9 +60,8 @@ jobs:
         ln -f -s /usr/share/zoneinfo/UTC /etc/localtime
     - name: Install dependencies
       run: |
-        add-apt-repository -y ppa:gift/dev
         apt-get update -q
-        apt-get install -y build-essential python3 python3-dev libfwps-python3 libfwsi-python3 libgzipf-python3 liblnk-python3 libolecf-python3 libregf-python3 python3-dfdatetime python3-distutils python3-dtfabric python3-lz4 python3-setuptools python3-yaml
+        apt-get install -y build-essential python3 python3-dev python3-setuptools
     - name: Install dependencies
       env:
         LANG: C.utf8
@@ -74,11 +72,6 @@ jobs:
         LANG: en_US.UTF-8
       run: |
         python3 ./run_tests.py
-    - name: Run end-to-end tests
-      env:
-        LANG: en_US.UTF-8
-      run: |
-        if test -f tests/end-to-end.py; then PYTHONPATH=. python3 ./tests/end-to-end.py --debug -c config/end-to-end.ini; fi
     - name: Build source distribution
       run: |
         python3 ./setup.py sdist

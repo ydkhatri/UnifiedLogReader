@@ -1,4 +1,4 @@
-pip >= 7.0.0
+pip >= 23.0.0
 biplist >= 1.0.3
 ipaddress
 lz4 >= 0.10.0

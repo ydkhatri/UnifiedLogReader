@@ -1,12 +1,14 @@
+##### This tool is now archived. I haven't had time to update this tool, so it's a bit outdated. There isn't incentive to update this any more as Python processing of UnifiedLogs is slow and takes a very long time. A much faster Rust-based alternative exists, please use that instead: https://github.com/mandiant/macos-UnifiedLogs
+
 # UnifiedLogReader
 
 A parser for Unified logging .tracev3 files.
 
 ## Project Status
 
-### alpha (experimental)
+### Archived ~~alpha (experimental)~~
 
-_This is a work in progress.. Currently this does not support the first version of tracev3 which is seen on macOS 10.12.0 (which uses catalog v2). It has been tested to work on catalog v3 files used in macOS 10.12.5 upto the current 10.15. Also tested on iOS 12.x successfully._
+_This ~~is~~ was a work in progress.. Currently this does not support the first version of tracev3 which is seen on macOS 10.12.0 (which uses catalog v2). It has been tested to work on catalog v3 files used in macOS 10.12.5 upto the current 10.15. Also tested on iOS 12.x successfully._
 
 ## License
 
